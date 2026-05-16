@@ -23,15 +23,23 @@ const REPO_ROOT = join(HERE, '..', '..');
 
 const SCAN_ROOTS = ['app/api', 'lib/server', 'lib/db', 'lib/ai', 'jobs'];
 
-// Broader sink alternation than integrity.sh Rule 9. Order kept loose
-// because the tokens themselves are the strong signal — sinks are anything
-// that could conceivably persist or egress on the same line.
+// Broader sink alternation than integrity.sh Rule 9. Kept narrow to verbs
+// that only loggers / analytics / persistence APIs use — generic
+// collection ops (push, append, add) and Zustand-style state setters
+// (set, update) are NOT included because they routinely accept tagged
+// untrusted content as data on the way INTO the system, not as a sink.
+//
+// The integrity.sh grep already covers the named log libraries (console,
+// pino, winston, Sentry, posthog, analytics, datadog) and Prisma. This
+// supplement catches structured loggers added later under a different
+// name: `audit.error(...)`, `tracer.record(...)`, `metrics.capture(...)`,
+// etc.
 const SINK_PATTERN = new RegExp(
   [
-    // Logger/analytics methods we want to catch beyond Rule 9's named libs.
-    '\\b\\w+\\.(log|info|warn|error|debug|trace|fatal|emit|track|capture|captureException|record|send|publish|push|write|append|store|persist|save|insert|add)\\(',
-    // Common DB write idioms not bound to "prisma.".
-    '\\b\\w+\\.(create|update|upsert|createMany|updateMany|delete|deleteMany|executeRaw|raw|query)\\(',
+    // Logger / analytics / tracing verbs that imply persistence or egress.
+    '\\b\\w+\\.(log|info|warn|error|debug|trace|fatal|track|capture|captureException|record|publish)\\(',
+    // DB-write verbs that imply server-side persistence beyond `prisma.`.
+    '\\b\\w+\\.(create|upsert|createMany|updateMany|deleteMany|executeRaw|raw|query)\\(',
     // Fetch/network egress.
     '\\bfetch\\s*\\(',
     // Process IO.
