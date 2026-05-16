@@ -17,7 +17,7 @@
 // description and the prior Day-1 TODO.
 
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { applySecurityMiddleware } from '@/middleware.security';
+import { applySecurityMiddleware, generateNonce } from '@/middleware.security';
 
 // Matchers list explicit public routes; anything not matched here requires
 // a signed-in session. `/api/webhooks/clerk` is unauthenticated by design —
@@ -40,7 +40,14 @@ export default clerkMiddleware(async (auth, req) => {
   // route, anonymous). applySecurityMiddleware uses the userId for the
   // per-user rate-limit bucket and attaches security headers regardless.
   const { userId } = await auth();
-  return applySecurityMiddleware(req, userId);
+  // WHY a fresh nonce per request: CSP nonces must be unguessable and
+  // single-use. generateNonce returns a base64-encoded UUID; applySecurityMiddleware
+  // forwards it on the x-nonce request header so app/layout.tsx and any
+  // server component can read it via `(await headers()).get('x-nonce')`,
+  // and pins it into the response's Content-Security-Policy header so the
+  // browser permits matching inline scripts.
+  const nonce = generateNonce();
+  return applySecurityMiddleware(req, userId, { nonce });
 });
 
 export const config = {
