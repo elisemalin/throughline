@@ -253,6 +253,24 @@ Shipped on branch `agent/backend-core/d2`:
 | `@tanstack/react-query` 5.x | Single source for every server-state read/write. `QueryProvider` wraps `app/(app)/layout.tsx`; every `/lib/queries/*` hook is a thin wrapper over a `mock-api` function so the Day 5 swap is mechanical. |
 | `lucide-react` 1.x | Icon set used by the prototype. Direct port — every NAV icon, every `<Plus />` / `<RefreshCw />` in the views resolves through one library so the visual language stays consistent. Major version jumped to 1.x in May 2026; identifiers in use (`LayoutDashboard`, `Compass`, etc.) remained stable. |
 | `@axe-core/playwright` 4.x | Drives `pnpm test:a11y`. Day 2 ships one public-route scan (`/sign-in`); the authenticated-route scan unblocks once QA Agent provisions `CI_LIVE_CLERK=1`. |
+| `storybook` 9.x + `@storybook/nextjs` 9.x + `@storybook/addon-a11y` 9.x | (Day 2 pin — superseded on Day 3 by `@storybook/react-vite`. See Day 3 sub-table below.) |
+
+### Day 3 Dependencies sub-table (Frontend Agent)
+
+| Package | Why |
+|---|---|
+| `@storybook/react-vite` 9.1.x + `vite` ^6 + `@vitejs/plugin-react` ^4 | Replaces `@storybook/nextjs`. Root cause of the Storybook regression: `@storybook/builder-webpack5` (still shipped by 9.x) calls `cache.shutdown` through a `Hook.tap` that Next 15.5's bundled webpack no longer exposes, so a clean install of `@storybook/nextjs` 9 produces `Cannot read properties of undefined (reading 'tap')`. None of our stories import `next/*` primitives, so the Vite builder is a clean swap. `viteFinal` mirrors the tsconfig `@/*` alias. |
+| `@lhci/cli` 0.15.x | Drives `pnpm test:lighthouse`. `lighthouserc.json` boots `next dev`, fetches `/sign-in`, asserts 90+ on perf / a11y / best-practices / SEO. Authenticated-route coverage unblocks on `CI_LIVE_CLERK=1`. |
+
+### Decision — Italiana wordmark + Fraunces display
+
+**Why:** Day 2's Instrument Serif + DM Sans pairing read as a default editorial-dev-tool template. Throughline is a Pastel Dawn studio product; the typography needed presence to carry the brand. `Italiana` (single-weight, art-deco) is reserved for the wordmark only via `font-wordmark`. `Fraunces` variable (with `SOFT 80, opsz 144`) replaces Instrument Serif as `font-display` — organic-cut serifs throughout the headings without the crisp neoclassical look. Both are Google Fonts so they load via `next/font/google` with no additional bundle cost beyond their subsets.
+
+**Cost:** Italiana ships only `latin` and only at 400 weight; we do not use it anywhere except the wordmark, so the cost is small.
+
+### Decision — frontend-local `apiKeyMode` until contract proposal lands
+
+**Why:** Security Agent's `noPassphraseFallback` deliberately produces the same on-disk shape as the strong path. The UI must know which mode wrote the saved key (the unlock paths differ). `ApiKeyMeta` in `/contracts/storage.ts` has no `mode` field. Filed `/contracts/proposals/2026-05-16-frontend-apikey-mode.md` (PENDING REVIEW); the interim storage at `throughline:apiKeyMode` folds into `apiKeyMeta` in one commit once accepted.
 | `storybook` 9.x + `@storybook/nextjs` 9.x + `@storybook/addon-a11y` 9.x | Component documentation + per-story axe-core run. Pinned to Storybook 9 because the 8.x line and Next 15.5 + React 19 collide on a webpack `Cannot read properties of undefined (reading 'tap')` error. |
 
 ---

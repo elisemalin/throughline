@@ -40,6 +40,7 @@ import {
   type ApplicationCreate,
   type ApplicationListResponse,
   type ApplicationUpdate,
+  type ApplicationAlignmentResponse,
   type ApplicationEventListResponse,
   type CoverLetterRequest,
   type DiscoveryListResponse,
@@ -103,6 +104,7 @@ const newId = (prefix: string) =>
 export type MockState = {
   skillsDB: SkillsDB | null;
   applications: Application[];
+  applicationEvents: Record<string, ApplicationEventListResponse['events']>;
   documents: Document[];
   watchlist: WatchlistAddResponse['company'][];
   discovery: DiscoveryListResponse['postings'];
@@ -111,6 +113,7 @@ export type MockState = {
 const mockState: MockState = {
   skillsDB: null,
   applications: [],
+  applicationEvents: {},
   documents: [],
   watchlist: [],
   discovery: [],
@@ -278,158 +281,218 @@ export const eliseSeed: SkillsDB = {
   updatedAt: '2026-05-16T00:00:00.000Z',
 };
 
-// Lifted from prototype/Throughline.jsx lines 481-492. Shape matches
-// WatchlistCompany contract (id, ownerId, company, atsProvider, atsSlug,
-// active, lastPolled, createdAt).
+// Watchlist seed — aligned with what External Adapter actually captured in
+// tests/fixtures/ats/*. The prototype's retool / linear (greenhouse), vercel
+// / figma (ashby), and airtable (lever) slugs all 404 against the live
+// providers as of 2026-05-16, so the seed mirrors what the real poller
+// will produce instead.
 export const watchlistSeed: WatchlistCompany[] = [
   {
     id: 'w_1',
-    ownerId: 'mock_user',
-    company: 'Retool',
-    atsProvider: 'greenhouse',
-    atsSlug: 'retool',
-    active: true,
-    lastPolled: '2026-05-13T06:00:00Z',
-    createdAt: '2026-05-01T00:00:00Z',
-  },
-  {
-    id: 'w_2',
-    ownerId: 'mock_user',
-    company: 'Linear',
-    atsProvider: 'greenhouse',
-    atsSlug: 'linear',
-    active: true,
-    lastPolled: '2026-05-13T06:00:00Z',
-    createdAt: '2026-05-01T00:00:00Z',
-  },
-  {
-    id: 'w_3',
-    ownerId: 'mock_user',
-    company: 'Vercel',
-    atsProvider: 'ashby',
-    atsSlug: 'vercel',
-    active: true,
-    lastPolled: '2026-05-13T06:00:00Z',
-    createdAt: '2026-05-01T00:00:00Z',
-  },
-  {
-    id: 'w_4',
     ownerId: 'mock_user',
     company: 'Anthropic',
     atsProvider: 'greenhouse',
     atsSlug: 'anthropic',
     active: true,
-    lastPolled: '2026-05-13T06:00:00Z',
+    lastPolled: '2026-05-16T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_2',
+    ownerId: 'mock_user',
+    company: 'Stripe',
+    atsProvider: 'greenhouse',
+    atsSlug: 'stripe',
+    active: true,
+    lastPolled: '2026-05-16T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_3',
+    ownerId: 'mock_user',
+    company: 'Airbnb',
+    atsProvider: 'greenhouse',
+    atsSlug: 'airbnb',
+    active: true,
+    lastPolled: '2026-05-16T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_4',
+    ownerId: 'mock_user',
+    company: 'Mistral',
+    atsProvider: 'lever',
+    atsSlug: 'mistral',
+    active: true,
+    lastPolled: '2026-05-16T06:00:00Z',
     createdAt: '2026-05-01T00:00:00Z',
   },
   {
     id: 'w_5',
     ownerId: 'mock_user',
-    company: 'Figma',
-    atsProvider: 'ashby',
-    atsSlug: 'figma',
+    company: 'Spotify',
+    atsProvider: 'lever',
+    atsSlug: 'spotify',
     active: true,
-    lastPolled: '2026-05-13T06:00:00Z',
+    lastPolled: '2026-05-16T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_6',
+    ownerId: 'mock_user',
+    company: 'Linear',
+    atsProvider: 'ashby',
+    atsSlug: 'linear',
+    active: true,
+    lastPolled: '2026-05-16T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_7',
+    ownerId: 'mock_user',
+    company: 'Notion',
+    atsProvider: 'ashby',
+    atsSlug: 'notion',
+    active: true,
+    lastPolled: '2026-05-16T06:00:00Z',
     createdAt: '2026-05-01T00:00:00Z',
   },
 ];
 
-// Lifted from prototype/Throughline.jsx lines 499-650. Shapes normalized to
-// the DiscoveredPosting contract (adds ownerId, watchlistCompanyId,
-// externalId, createdAt; coerces remote to boolean; postedAt is ISO date).
+// Discovery seed — slugs match tests/fixtures/ats/* and the watchlistSeed
+// above. Each posting's URL pattern mirrors what the real provider returns
+// (validated by External Adapter's adapter tests).
 export const discoverySeed: DiscoveredPosting[] = [
   {
     id: 'disc_1',
     ownerId: 'mock_user',
     watchlistCompanyId: 'w_1',
-    externalId: 'gh-retool-1',
-    company: 'Retool',
-    atsProvider: 'greenhouse',
-    role: 'Solutions Engineer, Internal Tools',
-    location: 'San Francisco / Remote (US)',
-    remote: true,
-    postedAt: '2026-05-12',
-    url: 'https://job-boards.greenhouse.io/retool/jobs/example',
-    salaryRange: '$170k to $230k',
-    jobDescription:
-      "Retool is hiring a Solutions Engineer for our Internal Tools practice. You'll partner with our largest customers (engineering, ops, and training teams) to architect internal applications on Retool. You will translate business requirements into shipped tooling, build reference implementations, and debug production deployments alongside customer engineering teams.",
-    alignmentScore: 92,
-    status: 'new',
-    createdAt: '2026-05-12T06:00:00Z',
-  },
-  {
-    id: 'disc_2',
-    ownerId: 'mock_user',
-    watchlistCompanyId: 'w_2',
-    externalId: 'gh-linear-1',
-    company: 'Linear',
-    atsProvider: 'greenhouse',
-    role: 'Senior Frontend Engineer',
-    location: 'Remote (Americas)',
-    remote: true,
-    postedAt: '2026-05-11',
-    url: 'https://job-boards.greenhouse.io/linear/jobs/example',
-    salaryRange: '$190k to $250k',
-    jobDescription:
-      'Linear is hiring a Senior Frontend Engineer to work on our core product. You will ship rapidly, own features end to end, and partner with design on tightly crafted interactions. We are looking for strong React and TypeScript fundamentals, design sensibility, and a portfolio of production frontend work at scale.',
-    alignmentScore: 88,
-    status: 'new',
-    createdAt: '2026-05-11T06:00:00Z',
-  },
-  {
-    id: 'disc_3',
-    ownerId: 'mock_user',
-    watchlistCompanyId: 'w_3',
-    externalId: 'ashby-vercel-1',
-    company: 'Vercel',
-    atsProvider: 'ashby',
-    role: 'Senior Full Stack Engineer, Customer Engineering',
-    location: 'Remote (US)',
-    remote: true,
-    postedAt: '2026-05-10',
-    url: 'https://jobs.ashbyhq.com/vercel/example',
-    salaryRange: '$180k to $240k',
-    jobDescription:
-      "Vercel is hiring a Senior Full Stack Engineer for our Customer Engineering team. You will work directly with enterprise customers, build reference implementations, debug production Next.js deployments, and contribute back into our core product.",
-    alignmentScore: 85,
-    status: 'new',
-    createdAt: '2026-05-10T06:00:00Z',
-  },
-  {
-    id: 'disc_4',
-    ownerId: 'mock_user',
-    watchlistCompanyId: 'w_4',
     externalId: 'gh-anthropic-1',
     company: 'Anthropic',
     atsProvider: 'greenhouse',
     role: 'Frontend Engineer, Claude for Work',
     location: 'San Francisco / NYC / Remote',
     remote: true,
-    postedAt: '2026-05-08',
+    postedAt: '2026-05-15',
     url: 'https://job-boards.greenhouse.io/anthropic/jobs/example',
     salaryRange: '$200k to $260k',
     jobDescription:
       "Anthropic is hiring Frontend Engineers to build Claude.ai and our enterprise extensions. You'll work in React and TypeScript, ship features for millions of users, and partner closely with research, design, and product.",
+    alignmentScore: 88,
+    status: 'new',
+    createdAt: '2026-05-15T06:00:00Z',
+  },
+  {
+    id: 'disc_2',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_2',
+    externalId: 'gh-stripe-1',
+    company: 'Stripe',
+    atsProvider: 'greenhouse',
+    role: 'Software Engineer, User Authentication',
+    location: 'Remote (US/Canada)',
+    remote: true,
+    postedAt: '2026-05-13',
+    url: 'https://job-boards.greenhouse.io/stripe/jobs/example',
+    salaryRange: '$190k to $250k',
+    jobDescription:
+      "Stripe's User Authentication team is hiring a Software Engineer. You will work on identity, auth, SSO, and access control surfaces used by millions of businesses. React and TypeScript on the frontend, Ruby or Go on the backend, and a security mindset are required.",
     alignmentScore: 82,
     status: 'new',
-    createdAt: '2026-05-08T06:00:00Z',
+    createdAt: '2026-05-13T06:00:00Z',
+  },
+  {
+    id: 'disc_3',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_3',
+    externalId: 'gh-airbnb-1',
+    company: 'Airbnb',
+    atsProvider: 'greenhouse',
+    role: 'Senior Frontend Engineer, Trust & Safety',
+    location: 'Remote (US)',
+    remote: true,
+    postedAt: '2026-05-12',
+    url: 'https://job-boards.greenhouse.io/airbnb/jobs/example',
+    salaryRange: '$180k to $240k',
+    jobDescription:
+      'Airbnb Trust & Safety is hiring a Senior Frontend Engineer to build the operator tools our trust analysts use every day. Strong React + TypeScript fundamentals, comfort with complex internal-tools UX, and the ability to ship safely at scale are required.',
+    alignmentScore: 86,
+    status: 'new',
+    createdAt: '2026-05-12T06:00:00Z',
+  },
+  {
+    id: 'disc_4',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_4',
+    externalId: 'lever-mistral-1',
+    company: 'Mistral',
+    atsProvider: 'lever',
+    role: 'Full Stack Engineer, Platform',
+    location: 'Paris / Remote (EU)',
+    remote: true,
+    postedAt: '2026-05-11',
+    url: 'https://jobs.lever.co/mistral/example',
+    salaryRange: '€110k to €160k',
+    jobDescription:
+      'Mistral is hiring a Full Stack Engineer for our Platform team. You will build internal tooling that lets researchers, customers, and ops teams ship faster on top of our models. React, TypeScript, and Python experience preferred.',
+    alignmentScore: 78,
+    status: 'new',
+    createdAt: '2026-05-11T06:00:00Z',
   },
   {
     id: 'disc_5',
     ownerId: 'mock_user',
     watchlistCompanyId: 'w_5',
-    externalId: 'ashby-figma-1',
-    company: 'Figma',
-    atsProvider: 'ashby',
-    role: 'Software Engineer, Internal Tools',
-    location: 'San Francisco / NYC',
-    remote: false,
-    postedAt: '2026-05-08',
-    url: 'https://jobs.ashbyhq.com/figma/example',
-    salaryRange: '$180k to $240k',
+    externalId: 'lever-spotify-1',
+    company: 'Spotify',
+    atsProvider: 'lever',
+    role: 'Senior Software Engineer, Internal Platform',
+    location: 'Stockholm / Remote (EU)',
+    remote: true,
+    postedAt: '2026-05-10',
+    url: 'https://jobs.lever.co/spotify/example',
+    salaryRange: '$180k to $230k',
     jobDescription:
-      "Figma is hiring a Software Engineer for our Internal Tools team. You will build the tooling that lets Figma's GTM, ops, support, and training teams scale. React and TypeScript skills, comfort with full stack JavaScript and SQL, and the ability to scope ambiguous problems are required.",
+      "Spotify's Internal Platform team is hiring a Senior Software Engineer. You will design and build the platform our product engineering teams use every day. React and TypeScript on the frontend, Go or Java on the backend, and prior experience with internal tooling at scale are key.",
     alignmentScore: 80,
+    status: 'new',
+    createdAt: '2026-05-10T06:00:00Z',
+  },
+  {
+    id: 'disc_6',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_6',
+    externalId: 'ashby-linear-1',
+    company: 'Linear',
+    atsProvider: 'ashby',
+    role: 'Senior Frontend Engineer',
+    location: 'Remote (Americas)',
+    remote: true,
+    postedAt: '2026-05-09',
+    url: 'https://jobs.ashbyhq.com/linear/example',
+    salaryRange: '$190k to $250k',
+    jobDescription:
+      'Linear is hiring a Senior Frontend Engineer to work on our core product. You will ship rapidly, own features end to end, and partner with design on tightly crafted interactions. Strong React + TypeScript fundamentals and design sensibility required.',
+    alignmentScore: 90,
+    status: 'new',
+    createdAt: '2026-05-09T06:00:00Z',
+  },
+  {
+    id: 'disc_7',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_7',
+    externalId: 'ashby-notion-1',
+    company: 'Notion',
+    atsProvider: 'ashby',
+    role: 'Software Engineer, Education',
+    location: 'Remote (Americas)',
+    remote: true,
+    postedAt: '2026-05-08',
+    url: 'https://jobs.ashbyhq.com/notion/example',
+    salaryRange: '$160k to $215k',
+    jobDescription:
+      'Notion is hiring a Software Engineer for our Education team. You will work on features and integrations that help schools, students, and corporate L&D teams use Notion. React, TypeScript, and prior experience with K-12 / higher-ed / corporate training software preferred.',
+    alignmentScore: 75,
     status: 'new',
     createdAt: '2026-05-08T06:00:00Z',
   },
@@ -736,6 +799,20 @@ export async function getApplications(): Promise<ApplicationListResponse> {
   return { applications: mockState.applications.map(projectScore) };
 }
 
+function recordEvent(
+  applicationId: string,
+  event: Omit<ApplicationEventListResponse['events'][number], 'id' | 'applicationId' | 'at'>,
+): void {
+  const list = mockState.applicationEvents[applicationId] ?? [];
+  list.unshift({
+    id: newId('evt'),
+    applicationId,
+    at: nowIso(),
+    ...event,
+  });
+  mockState.applicationEvents[applicationId] = list;
+}
+
 export async function postApplication(
   req: ApplicationCreate,
 ): Promise<{ application: Application }> {
@@ -760,6 +837,7 @@ export async function postApplication(
     updatedAt: nowIso(),
   };
   mockState.applications.unshift(application);
+  recordEvent(application.id, { kind: 'created' });
   return { application: projectScore(application) };
 }
 
@@ -771,12 +849,25 @@ export async function patchApplication(
   await delay(FAST);
   const idx = mockState.applications.findIndex((a) => a.id === id);
   if (idx < 0) throw new Error(`Application not found: ${id}`);
+  const previous = mockState.applications[idx];
   const merged: Application = {
-    ...mockState.applications[idx],
+    ...previous,
     ...validated,
     updatedAt: nowIso(),
   };
   mockState.applications[idx] = merged;
+  // WHY: backend writes events on transitions; the mock mirrors that so the
+  // Tracker detail timeline shows the same events the real backend will.
+  if (validated.status && validated.status !== previous.status) {
+    recordEvent(id, {
+      kind: 'status_change',
+      fromStatus: previous.status,
+      toStatus: validated.status,
+    });
+  }
+  if (validated.notes && validated.notes !== previous.notes) {
+    recordEvent(id, { kind: 'note', note: validated.notes.slice(0, 120) });
+  }
   return { application: projectScore(merged) };
 }
 
@@ -786,10 +877,33 @@ export async function deleteApplication(id: string): Promise<{ ok: true }> {
   return { ok: true };
 }
 
-export async function getApplicationEvents(_id: string): Promise<ApplicationEventListResponse> {
+export async function getApplicationEvents(id: string): Promise<ApplicationEventListResponse> {
   await delay(FAST);
-  // Backend Core writes events on status transitions; mock returns empty.
-  return { events: [] };
+  // Backend Core writes events on status transitions; the mock keeps a
+  // per-application transcript in mockState.applicationEvents (initialized
+  // lazily) so the Tracker detail timeline can render across the same
+  // session.
+  const list = (mockState.applicationEvents ?? {})[id] ?? [];
+  return { events: list };
+}
+
+// Mirrors POST /api/applications/:id/alignment on main. Recomputes the
+// AlignmentAnalysis from the row's jobDescription and persists the snapshot.
+export async function postApplicationAlignment(
+  id: string,
+): Promise<ApplicationAlignmentResponse> {
+  await delay(MED);
+  const idx = mockState.applications.findIndex((a) => a.id === id);
+  if (idx < 0) throw new Error(`Application not found: ${id}`);
+  const row = mockState.applications[idx];
+  const analysis = await postAlignment({ jobDescription: row.jobDescription ?? '' });
+  const merged: Application = {
+    ...row,
+    alignmentAnalysis: analysis,
+    updatedAt: nowIso(),
+  };
+  mockState.applications[idx] = merged;
+  return { application: projectScore(merged) };
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,13 @@ export type LocalStorageKey = (typeof LOCAL_STORAGE_KEYS)[keyof typeof LOCAL_STO
 export type ApiKeyMeta = {
   last4: string;
   createdAt: string;                                // ISO 8601
+  // 'passphrase' — encryptKey() path (PBKDF2 + AES-GCM). User must enter
+  // the passphrase to unlock.
+  // 'fallback' — noPassphraseFallback() path (XOR-obfuscated). No
+  // passphrase required at unlock; the UI surfaces an explicit warning at
+  // both save and unlock that this mode only stops casual disk inspection.
+  // See /contracts/proposals/2026-05-16-frontend-apikey-mode.md.
+  mode: 'passphrase' | 'fallback';
 };
 
 // ---------------------------------------------------------------------------

@@ -1,22 +1,33 @@
 // Root layout for the entire app.
 //
-// WHY: ClerkProvider must wrap the whole tree because Clerk's hooks read the
-// session context from React. Fonts are loaded via next/font/google so they
-// are self-hosted (no FOUT, no third-party DNS) and exposed as CSS variables
-// the Tailwind config consumes.
+// WHY ClerkProvider wraps the tree: Clerk's hooks read session context from
+// React. Fonts load via next/font/google so they are self-hosted (no FOUT,
+// no third-party DNS) and exposed as CSS variables Tailwind consumes.
 
 import type { Metadata } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
-import { Instrument_Serif, JetBrains_Mono, DM_Sans } from 'next/font/google';
+import { Fraunces, Italiana, JetBrains_Mono, DM_Sans } from 'next/font/google';
 
 import './globals.css';
 
-// Display: Instrument Serif (per the prototype's headline treatment).
-const fontDisplay = Instrument_Serif({
+// Wordmark: Italiana is single-weight, art-deco, very distinctive — used
+// only on the brand mark itself so the rest of the typography stays
+// readable while the brand has presence.
+const fontWordmark = Italiana({
   weight: '400',
+  subsets: ['latin'],
+  variable: '--font-wordmark',
+  display: 'swap',
+});
+
+// Display: Fraunces variable. We use the "soft" axis at runtime via CSS
+// font-variation-settings so headings have organic edges rather than the
+// crisp neoclassical look of a classic transitional serif.
+const fontDisplay = Fraunces({
   subsets: ['latin'],
   variable: '--font-display',
   display: 'swap',
+  axes: ['SOFT', 'opsz'],
 });
 
 // Data: JetBrains Mono for table cells, IDs, and any numeric column where
@@ -54,7 +65,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html
         lang="en"
-        className={`${fontDisplay.variable} ${fontMono.variable} ${fontSans.variable}`}
+        className={`${fontWordmark.variable} ${fontDisplay.variable} ${fontMono.variable} ${fontSans.variable}`}
       >
         <body className="font-sans antialiased">
           {children}

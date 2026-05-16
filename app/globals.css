@@ -6,12 +6,69 @@
 @import "tailwindcss";
 @config "../tailwind.config.ts";
 
-/* Base surface for the entire app — stone-950 matches the prototype. */
 :root {
   color-scheme: dark;
 }
 
+/* Stone-950 base; a barely-visible warm radial pulls the eye to the
+   wordmark area without breaking the editorial flat-color discipline.
+   Combined with a low-amplitude SVG noise overlay (below) it gives the
+   surface a printed-paper grain rather than the perfectly-flat
+   default-dark-app look. */
 html, body {
   background-color: rgb(12 10 9);
   color: rgb(231 229 228);
+}
+
+body {
+  background-image:
+    radial-gradient(
+      ellipse 60vw 40vh at 16% -10%,
+      rgba(253, 230, 138, 0.05),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 40vw 50vh at 100% 110%,
+      rgba(180, 140, 90, 0.04),
+      transparent 60%
+    );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  position: relative;
+}
+
+/* WHY ::before with inlined SVG noise: a 1KB inline mask is cheaper than
+   an extra HTTP request and survives the static asset pipeline. The
+   opacity is tuned so the grain reads as paper texture, not as visual
+   noise. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Display headings use Fraunces with the SOFT axis pushed up — gives the
+   serifs an organic, hand-cut quality rather than the crisp neoclassical
+   look of an Instrument Serif. */
+.font-display {
+  font-variation-settings: "SOFT" 80, "opsz" 144;
+  letter-spacing: -0.01em;
+}
+
+/* The brand wordmark uses Italiana — single-weight, art-deco serif. The
+   letter-spacing widens it out so the four capital letters carry presence
+   even at small sizes in the sidebar. */
+.font-wordmark {
+  letter-spacing: 0.04em;
+  font-feature-settings: "liga", "dlig";
+}
+
+::selection {
+  background-color: rgba(253, 230, 138, 0.22);
+  color: rgb(253, 230, 138);
 }

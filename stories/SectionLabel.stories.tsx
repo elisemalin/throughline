@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/nextjs';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Card, SectionLabel } from '@/components';
 
 const meta: Meta<typeof SectionLabel> = {

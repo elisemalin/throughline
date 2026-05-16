@@ -7,6 +7,7 @@ export {
   useCreateApplication,
   useUpdateApplication,
   useDeleteApplication,
+  useRecomputeAlignment,
 } from './useApplications';
 export {
   useDocuments,

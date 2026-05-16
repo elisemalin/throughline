@@ -1,9 +1,9 @@
 'use client';
 
-// Ported from prototype/Throughline.jsx TrackerView (lines 1904-2084) and
-// ApplicationDetail (lines 2317-2460). Day 2 surface: list applications,
-// filter by status, create from a small modal, edit status from the detail
-// drawer. Alignment recomputation lives behind a button in the drawer.
+// Ported from prototype/Throughline.jsx TrackerView (lines 1904-2084).
+// Day 3: list + filter + create stay here; the per-application detail drawer
+// with debounced notes, follow-up editor, status chips, alignment recompute,
+// and events timeline lives in application-detail.tsx.
 
 import { useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
@@ -14,18 +14,16 @@ import {
   Input,
   Modal,
   Pill,
-  SectionLabel,
   Textarea,
 } from '@/components';
 import type { ApplicationStatus } from '@/contracts/models';
 import {
   useApplications,
   useCreateApplication,
-  useDeleteApplication,
-  useUpdateApplication,
 } from '@/lib/queries/useApplications';
 import { useToastStore } from '@/stores/useToastStore';
 import { STATUS_TONES, STATUSES, statusLabel } from '../_lib/status';
+import { ApplicationDetailModal } from './application-detail';
 
 type CreateFormState = {
   company: string;
@@ -50,8 +48,6 @@ const ACTIVE_STATUSES: ApplicationStatus[] = ['applied', 'screen', 'interview'];
 export function TrackerClient() {
   const { data, isLoading } = useApplications();
   const create = useCreateApplication();
-  const update = useUpdateApplication();
-  const remove = useDeleteApplication();
   const pushToast = useToastStore((s) => s.push);
 
   const [filter, setFilter] = useState<StatusFilter>('all');
@@ -87,31 +83,6 @@ export function TrackerClient() {
     } catch (error) {
       pushToast(
         error instanceof Error ? error.message : 'Could not create application.',
-        'error',
-      );
-    }
-  }
-
-  async function handleStatusChange(id: string, next: ApplicationStatus) {
-    try {
-      await update.mutateAsync({ id, patch: { status: next } });
-      pushToast(`Moved to ${statusLabel(next)}.`, 'success');
-    } catch (error) {
-      pushToast(
-        error instanceof Error ? error.message : 'Could not update status.',
-        'error',
-      );
-    }
-  }
-
-  async function handleDelete(id: string) {
-    try {
-      await remove.mutateAsync(id);
-      setDetailId(null);
-      pushToast('Application removed.', 'success');
-    } catch (error) {
-      pushToast(
-        error instanceof Error ? error.message : 'Could not delete application.',
         'error',
       );
     }
@@ -258,83 +229,7 @@ export function TrackerClient() {
         </div>
       </Modal>
 
-      <Modal
-        open={detail !== null}
-        onClose={() => setDetailId(null)}
-        title={detail ? `${detail.role} at ${detail.company}` : ''}
-        wide
-      >
-        {detail && (
-          <div className="space-y-5">
-            <div>
-              <SectionLabel>Status</SectionLabel>
-              <div className="flex flex-wrap gap-1.5">
-                {STATUSES.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => handleStatusChange(detail.id, s)}
-                    className={`text-[10px] uppercase tracking-[0.2em] font-mono px-2.5 py-1.5 rounded-sm border ${
-                      detail.status === s
-                        ? 'border-amber-200/60 text-amber-200 bg-amber-900/20'
-                        : 'border-stone-800 text-stone-500 hover:text-stone-200'
-                    }`}
-                  >
-                    {statusLabel(s)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {typeof detail.alignmentScore === 'number' && detail.alignmentAnalysis && (
-              <Card className="p-4">
-                <SectionLabel>Alignment</SectionLabel>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-3xl font-display tabular-nums text-amber-200">
-                    {detail.alignmentScore}%
-                  </span>
-                  <span className="text-sm text-stone-400">
-                    {detail.alignmentAnalysis.recommendation}
-                  </span>
-                </div>
-                {detail.alignmentAnalysis.missingKeywords.length > 0 && (
-                  <div className="mt-3">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono mb-1.5">
-                      Missing keywords
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {detail.alignmentAnalysis.missingKeywords.map((k) => (
-                        <Pill key={k} tone="warn">
-                          {k}
-                        </Pill>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )}
-            {detail.jobDescription && (
-              <div>
-                <SectionLabel>Job description</SectionLabel>
-                <p className="text-sm text-stone-400 whitespace-pre-wrap leading-relaxed">
-                  {detail.jobDescription}
-                </p>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => handleDelete(detail.id)}
-              >
-                Delete
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setDetailId(null)}>
-                Close
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <ApplicationDetailModal application={detail} onClose={() => setDetailId(null)} />
     </div>
   );
 }

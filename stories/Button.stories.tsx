@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/nextjs';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Button, BUTTON_VARIANTS } from '@/components';
 
 const meta: Meta<typeof Button> = {

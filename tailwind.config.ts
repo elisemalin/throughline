@@ -8,26 +8,35 @@ const config: Config = {
   content: [
     './app/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
+    './stories/**/*.{ts,tsx}',
   ],
   theme: {
     extend: {
       colors: {
-        // The prototype is built on stone-950 + amber-200; named here so
-        // components can reference the role rather than the swatch.
         surface: {
-          DEFAULT: 'rgb(12 10 9)',   // stone-950
-          raised:  'rgb(28 25 23)',  // stone-900
+          DEFAULT: 'rgb(12 10 9)',
+          raised: 'rgb(28 25 23)',
         },
         accent: {
-          DEFAULT: 'rgb(253 230 138)', // amber-200
+          DEFAULT: 'rgb(253 230 138)',
         },
       },
       fontFamily: {
         // CSS variables are populated by next/font in app/layout.tsx so the
-        // font binaries are self-hosted and FOUT is avoided.
+        // font binaries are self-hosted and FOUT is avoided. `wordmark` is
+        // reserved for the brand mark in Sidebar; everything else uses
+        // `display`, `sans`, or `mono`.
+        wordmark: ['var(--font-wordmark)', 'serif'],
         display: ['var(--font-display)', 'serif'],
-        sans:    ['var(--font-sans)',    'system-ui', 'sans-serif'],
-        mono:    ['var(--font-mono)',    'ui-monospace', 'monospace'],
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
+      },
+      borderRadius: {
+        // Cards/buttons used `rounded-sm` (2px) which read as engineering-tool
+        // brutal. Bumping the default `rounded` token to 4px and overriding
+        // `sm` to keep it consistent across the existing call sites.
+        sm: '4px',
+        md: '6px',
       },
     },
   },
