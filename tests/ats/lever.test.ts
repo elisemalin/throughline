@@ -1,8 +1,10 @@
 // Lever adapter unit tests.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NormalizedPostingSchema } from '@/contracts/ats';
 import { leverAdapter, type LeverRawJob } from '@/lib/ats/lever';
+import { AtsProviderError } from '@/lib/ats/errors';
+import { __setSleepImplForTests } from '@/lib/ats/_http';
 import spotifyFixture from '../fixtures/ats/lever/lever-spotify.json' with { type: 'json' };
 
 const fixture = spotifyFixture as LeverRawJob[];
@@ -20,8 +22,13 @@ function mockFetchOnce(body: unknown, init: { status?: number; ok?: boolean } = 
   );
 }
 
+beforeEach(() => {
+  __setSleepImplForTests(async () => undefined);
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  __setSleepImplForTests(undefined);
 });
 
 describe('leverAdapter.normalize', () => {
@@ -58,14 +65,32 @@ describe('leverAdapter.fetchPostings', () => {
     expect(result).toHaveLength(3);
   });
 
-  it('throws if the response is not an array', async () => {
+  it('throws AtsProviderError if the response is not an array', async () => {
     mockFetchOnce({ jobs: [] });
-    await expect(leverAdapter.fetchPostings('spotify')).rejects.toThrow(/expected array/);
+    const err = await leverAdapter.fetchPostings('spotify').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AtsProviderError);
+    expect((err as AtsProviderError).message).toMatch(/expected JSON array/);
   });
 
-  it('throws on non-2xx', async () => {
-    mockFetchOnce({}, { status: 500, ok: false });
-    await expect(leverAdapter.fetchPostings('spotify')).rejects.toThrow(/HTTP 500/);
+  it('throws AtsProviderError immediately on 4xx (not retried)', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('{}', { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(leverAdapter.fetchPostings('spotify')).rejects.toMatchObject({
+      status: 403,
+      provider: 'lever',
+      slug: 'spotify',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once on 5xx then throws AtsProviderError', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 500 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(leverAdapter.fetchPostings('spotify')).rejects.toBeInstanceOf(AtsProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

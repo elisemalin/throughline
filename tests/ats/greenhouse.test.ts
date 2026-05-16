@@ -4,9 +4,11 @@
 // through NormalizedPostingSchema. fetchPostings/validateSlug are exercised
 // against a stubbed global fetch so the suite is hermetic.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NormalizedPostingSchema } from '@/contracts/ats';
 import { greenhouseAdapter, type GreenhouseRawJob } from '@/lib/ats/greenhouse';
+import { AtsProviderError } from '@/lib/ats/errors';
+import { __setSleepImplForTests } from '@/lib/ats/_http';
 import anthropicFixture from '../fixtures/ats/greenhouse/greenhouse-anthropic.json' with { type: 'json' };
 
 interface FixtureShape {
@@ -29,8 +31,15 @@ function mockFetchOnce(body: unknown, init: { status?: number; ok?: boolean } = 
   );
 }
 
+beforeEach(() => {
+  // Stubbed sleep means retry paths still execute their loop without
+  // burning real seconds. Restored after each test.
+  __setSleepImplForTests(async () => undefined);
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  __setSleepImplForTests(undefined);
 });
 
 describe('greenhouseAdapter.normalize', () => {
@@ -71,9 +80,27 @@ describe('greenhouseAdapter.fetchPostings', () => {
     expect(result[0]).toEqual(fixture.jobs[0]);
   });
 
-  it('throws on non-2xx', async () => {
-    mockFetchOnce({}, { status: 503, ok: false });
-    await expect(greenhouseAdapter.fetchPostings('anthropic')).rejects.toThrow(/HTTP 503/);
+  it('throws AtsProviderError immediately on 4xx (not retried)', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('{}', { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(greenhouseAdapter.fetchPostings('anthropic')).rejects.toMatchObject({
+      status: 401,
+      provider: 'greenhouse',
+      slug: 'anthropic',
+      attempts: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once on 5xx then throws AtsProviderError if still failing', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const err = await greenhouseAdapter.fetchPostings('anthropic').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AtsProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

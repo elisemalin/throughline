@@ -1,0 +1,62 @@
+# ATS integration job.
+#
+# WHY separate workflow: the integration test hits real public ATS endpoints
+# AND a real Postgres test branch. It is slower, has external dependencies,
+# and would slow the static-checks workflow into uselessness if bundled.
+# This file runs only on agent/external-adapter/* branches and on main; PRs
+# from forks (no secret access) are still safe because the job no-ops when
+# DATABASE_URL_TEST is absent.
+
+name: ATS integration
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/external-adapter/**'
+
+jobs:
+  ats-integration:
+    runs-on: ubuntu-latest
+    env:
+      ATS_INTEGRATION: '1'
+      DATABASE_URL_TEST: ${{ secrets.DATABASE_URL_TEST }}
+    steps:
+      - name: Check if secret is configured
+        id: gate
+        run: |
+          if [ -z "${DATABASE_URL_TEST}" ]; then
+            echo "DATABASE_URL_TEST not set; skipping integration suite."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out code
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enable corepack
+        if: steps.gate.outputs.should_run == 'true'
+        run: corepack enable
+
+      - name: Set up Node
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: steps.gate.outputs.should_run == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        if: steps.gate.outputs.should_run == 'true'
+        run: pnpm prisma:generate
+
+      - name: Run ATS integration
+        if: steps.gate.outputs.should_run == 'true'
+        run: pnpm test:ats:integration

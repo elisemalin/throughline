@@ -2,6 +2,34 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/external-adapter/d3] — 2026-05-16
+
+### Added
+- `lib/ats/errors.ts` — `AtsProviderError` class carrying `provider`, `slug`, `status`, `attempts`, plus `isAtsProviderError` type guard. The poller catches it specifically and projects it into a structured `errors[]` entry per row.
+- `lib/ats/_http.ts` — `fetchWithRetry` helper enforcing the Day-3 retry policy: 5xx and network errors retry once after 5 s; 429 retries once respecting `Retry-After` (else 30 s default); 4xx other than 429 fails immediately. Sleep is overrideable via `__setSleepImplForTests` so the unit suite never waits the real back-off window.
+- `jobs/poll.ts` — exports `pollOne` (used by the integration test), `runPollSweep` (shared sweep body), `ATS_POLL_REQUESTED_EVENT`, and a second Inngest function `atsPollRequestedFunction` triggered by `ats/poll.requested` events for on-demand per-user sweeps. Same `ATS_POLLER=disabled` kill-switch honored.
+- `tests/ats/_http.test.ts` — 8 tests covering every branch of the retry policy.
+- `tests/ats/{greenhouse,lever,ashby}.test.ts` — per-adapter retry-path coverage (4xx immediate fail; 5xx retried then thrown) on top of Day-2 normalize/validateSlug suites. Total ATS tests: 43.
+- `tests/ats/integration/poll.integration.test.ts` — Neon-backed integration test. Seeds three `WatchlistCompany` rows under a fixed `TEST_OWNER_ID`, runs `pollOne` per row with the 2 s pacing gap, asserts inserts > 0, `lastPolled` set, then re-runs and asserts second sweep inserts = 0 (dedup). Tears everything down in `afterAll`. Falls back from `DATABASE_URL_TEST` to `DATABASE_URL` with a printed warning.
+- `.github/workflows/ats-integration.yml` — separate CI workflow runs `pnpm test:ats:integration` on push to `main` or `agent/external-adapter/**`, gated on `DATABASE_URL_TEST` secret (no-ops cleanly when absent).
+- `contracts/proposals/2026-05-16-external-adapter-ats-poll-event.md` — `[PENDING REVIEW]` proposal to land `ATS_POLL_REQUESTED_EVENT` + `AtsPollRequestedDataSchema` in `/contracts/ats.ts`.
+- `contracts/proposals/2026-05-16-external-adapter-workday-deferred.md` — `[PENDING REVIEW]` proposal confirming the Workday adapter stays as the throwing stub until v1.1. Documents what the Day-3 spike found.
+
+### Changed
+- `lib/ats/greenhouse.ts`, `lib/ats/lever.ts`, `lib/ats/ashby.ts` — `fetchPostings` routes through `fetchWithRetry`; all non-2xx surfaces as `AtsProviderError` with provider/slug context. `validateSlug` keeps raw fetch for its distinct 404 → "board not found" UX semantics.
+- `lib/ats/registry.ts` — `triggerPoll(ownerId)` flipped from no-op stub to `inngest.send({ name: 'ats/poll.requested', data: { ownerId } })`. Response shape preserved (`{ newPostings: 0, totalPostings: 0, polledAt }`) since the real sweep is asynchronous; Backend Core's route already counts the live total from DB. `getAdapter` and `ATS_ADAPTERS` unchanged.
+- `.env.example` — added `DATABASE_URL_TEST` with a comment pointing to a dedicated Neon test branch.
+- `ARCHITECTURE.md` — added two decisions: "ATS adapter retry policy" and "`DATABASE_URL_TEST` convention". Documents the cleanup query for the seeded `TEST_OWNER_ID` rows.
+
+### Contract notes
+- Two `[PENDING REVIEW]` proposals filed (see Added). External Adapter respects `/contracts/*.ts` immutability — both describe additions the Architect lands on accept.
+
+### Cross-stream coordination for Frontend
+- `/lib/mock-api.ts` `discoverySeed` still references kickoff-era slugs (`retool`, `linear`, `vercel`, `figma`, `airtable`). Frontend Agent should update its seed to match the Day-2 captured-fixture slugs: `stripe`, `airbnb`, `anthropic` (Greenhouse), `mistral`, `spotify` (Lever), `linear`-on-Ashby, `notion` (Ashby). Noted on the Day-3 PR.
+
+### Carried over
+- Architect to mark both proposals `[DECIDED: ...]`. On accept of the event-name proposal, the constants in `jobs/poll.ts` move to `/contracts/ats.ts` and the local exports are removed.
+- The Neon integration test path is wired but not run from this branch (no local Neon URL); CI workflow runs it on push once `DATABASE_URL_TEST` is set as a repo secret.
 ## [agent/ai-integration/d3] — 2026-05-16
 
 ### Added
