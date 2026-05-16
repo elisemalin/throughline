@@ -15,19 +15,34 @@ import {
   type DossierRawOutput,
 } from '@/contracts/ai';
 import { createClient } from '../client';
-import { invokeOneShot } from '../invoke';
+import { invokeOneShot, type ToolParam } from '../invoke';
 import type { CallOptions } from '../types';
 
-// Tool config for Anthropic's web_search server tool. The SDK's
-// `Messages.Tool` union currently models client-defined tools (which
-// carry an input_schema); server tools have a different shape, so we
-// cast through `unknown` once at the boundary rather than fight the
-// SDK's narrower client-tool type at every call site.
-const WEB_SEARCH_TOOL = {
+// Local mirror of Anthropic's `web_search_20250305` server tool. The SDK's
+// public `Messages.Tool` union still models only client-defined tools
+// (which carry an input_schema); the server-tool shape is documented at
+// docs.anthropic.com/en/docs/build-with-claude/tool-use/web-search-tool.
+// Pin the literal type so a future schema bump (e.g. _20260101) surfaces
+// as a typecheck error rather than a silent runtime mismatch.
+type WebSearchTool20250305 = {
+  type: 'web_search_20250305';
+  name: 'web_search';
+  max_uses?: number;
+  allowed_domains?: string[];
+  blocked_domains?: string[];
+  user_location?: { type: 'approximate'; country?: string; city?: string };
+};
+
+const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
   type: 'web_search_20250305',
   name: 'web_search',
   max_uses: 5,
-} as unknown as Anthropic.Messages.Tool;
+};
+
+const DOSSIER_OUTPUT_HINT = `Output JSON shape (return EXACTLY this key):
+{
+  "body": "<Markdown dossier as a single string, with inline source links>"
+}`;
 
 export function buildDossierUser(input: DossierInput): string {
   const app = input.application;
@@ -37,6 +52,8 @@ export function buildDossierUser(input: DossierInput): string {
     wrapUntrusted('company', app.company),
     wrapUntrusted('jobDescription', app.jobDescription ?? ''),
     wrapUntrusted('notes', app.notes ?? ''),
+    '',
+    DOSSIER_OUTPUT_HINT,
   ].join('\n');
 }
 

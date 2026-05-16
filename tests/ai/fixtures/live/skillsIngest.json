@@ -1,0 +1,76 @@
+{
+  "fullName": "Jane Doe",
+  "headline": "Senior Engineer",
+  "positioning": "Senior engineer experienced in modernizing data infrastructure and optimizing ETL workflows for significant performance gains.",
+  "contact": {},
+  "targetRoles": [
+    "Senior Engineer"
+  ],
+  "awards": [],
+  "jobs": [
+    {
+      "id": "J01",
+      "employer": "Example Co",
+      "title": "Senior Engineer",
+      "startDate": "2022-01",
+      "location": "",
+      "industry": "",
+      "summary": "Senior Engineer role focused on data pipeline modernization.",
+      "projects": [
+        {
+          "id": "P01",
+          "name": "ETL Pipeline Rewrite",
+          "problem": "Existing ETL pipeline had excessive runtime impacting data availability.",
+          "actions": [
+            "Rewrote ETL pipeline"
+          ],
+          "result": "Rewrote ETL pipeline; runtime reduced from 8h to 45m.",
+          "metrics": {
+            "runtimeBefore": "8h",
+            "runtimeAfter": "45m"
+          },
+          "scope": "",
+          "skills": [
+            "ETL",
+            "Data Engineering",
+            "Performance Optimization"
+          ],
+          "tools": [],
+          "methods": [
+            "ETL"
+          ],
+          "domain": "Data Engineering",
+          "keywords": [
+            "ETL",
+            "pipeline",
+            "performance",
+            "runtime"
+          ],
+          "recency": 5,
+          "relevance": [
+            "analytics"
+          ],
+          "confidence": 0.6
+        }
+      ]
+    }
+  ],
+  "coreSkills": [
+    "ETL",
+    "Data Engineering",
+    "Performance Optimization"
+  ],
+  "tools": [],
+  "methods": [
+    "ETL"
+  ],
+  "domains": [
+    "Data Engineering"
+  ],
+  "keywords": [
+    "ETL",
+    "pipeline",
+    "performance",
+    "runtime"
+  ]
+}

@@ -17,6 +17,12 @@ import { createClient, extractText } from '../client';
 import { withValidationRetry } from '../retry';
 import type { CallOptions } from '../types';
 
+const MOCK_INTERVIEW_OUTPUT_HINT = `Output JSON shape (return EXACTLY these keys):
+{
+  "next": "<the interviewer's next message, under 2000 chars>",
+  "done": <true if wrapping up, false otherwise>
+}`;
+
 export function buildMockInterviewUser(input: MockInterviewInput): string {
   const app = input.application;
   const blocks: string[] = [
@@ -44,6 +50,7 @@ export function buildMockInterviewUser(input: MockInterviewInput): string {
       }
     });
   }
+  blocks.push('', MOCK_INTERVIEW_OUTPUT_HINT);
   return blocks.join('\n');
 }
 

@@ -295,6 +295,8 @@ Rules:
 - recency: integer 1-5 where 5 is current. relevance: tags like 'frontend', 'fullstack', 'leadership', 'analytics', 'design'.
 - confidence: 0.0-1.0 reflecting how well the source text supported your extraction.
 
+Also emit a top-level "warnings" array of up to 20 short strings (max 500 chars each) flagging anything ambiguous you had to decide: missing dates, collapsed duplicates, fields you couldn't extract, normalization choices you made. Empty array if the parse was clean. Example entries: "could not extract end date for J02", "collapsed duplicate skill entries", "resume contained 12 jobs; only the most recent kept".
+
 Return a single JSON object matching the response schema. No prose outside JSON. No markdown fences around the JSON.`;
 
 export type IngestInput = {
@@ -303,12 +305,20 @@ export type IngestInput = {
 };
 
 // Ingest output mirrors SkillsDB minus server-set fields (id, ownerId,
-// updatedAt). The AI Integration handler adds those after Zod validation.
+// updatedAt), plus a model-emitted `warnings` array. The model has visibility
+// into ambiguous parses, missing dates, normalization decisions; surfacing
+// them as structured strings is more accurate than reconstructing them from
+// validator output. See /contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md
+// for the full rationale.
 export const IngestRawSchema = SkillsDBSchema.omit({
   id: true,
   ownerId: true,
   updatedAt: true,
-}).strict();
+})
+  .extend({
+    warnings: z.array(z.string().max(500)).max(20).default([]),
+  })
+  .strict();
 export type IngestRawOutput = z.infer<typeof IngestRawSchema>;
 
 // ---------------------------------------------------------------------------
