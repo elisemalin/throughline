@@ -33,7 +33,8 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 | `@prisma/client` 5 + `prisma` 5 | Foundation Agent installs on Day 1. Maps `/contracts/models.ts` to Postgres. JSON columns are used for nested SkillsDB shapes per the Decision below. |
 | `@clerk/nextjs` | Foundation Agent installs on Day 1. Justification for choosing Clerk over Firebase Auth: BYOK Anthropic flow is browser-side, server only validates session, and Clerk's middleware integrates with Next.js App Router. |
 | `@anthropic-ai/sdk` | AI Integration Agent installs when starting Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
-| `inngest` | External Adapter Agent installs when starting Day 3. Daily poller for ATS providers. |
+| `inngest` 3.27.4 | External Adapter Agent installs on Day 2. Daily ATS poller runs as an Inngest scheduled function (`jobs/poll.ts`); the client lives in `jobs/inngest.ts`. Pinned to 3.27.4 because 3.28+ requires the Next 15 App Router handler shape Backend Core has not yet wired. |
+| `vitest` 2.1.9 | External Adapter Agent installs on Day 2. Unit harness for `tests/ats/**` (adapter normalize() + validateSlug() against captured fixtures, plus the integration test gated on ATS_INTEGRATION=1). Picked over jest because vitest runs against the TS source directly without a separate transform pipeline and reuses the Vite ESM resolver the rest of the Next 15 toolchain already speaks. Pinned to 2.1.9 (last 2.x release on Node 22). |
 | `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs when starting Day 3. AI prompt-hash cache + sliding-window rate limit. |
 
 Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.

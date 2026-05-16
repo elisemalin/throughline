@@ -10,12 +10,15 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:smoke": "playwright test --config=playwright.config.ts",
+    "test:ats": "vitest run tests/ats --exclude tests/ats/integration/**",
+    "test:ats:integration": "ATS_INTEGRATION=1 vitest run tests/ats/integration",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@clerk/nextjs": "6.39.3",
     "@prisma/client": "5.22.0",
+    "inngest": "3.27.4",
     "next": "15.5.18",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -33,6 +36,7 @@
     "postcss": "8.4.49",
     "prisma": "5.22.0",
     "tailwindcss": "4.2.4",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "2.1.9"
   }
 }
