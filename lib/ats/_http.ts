@@ -14,6 +14,7 @@
 
 import type { AtsProvider } from '@/contracts/models';
 import { AtsProviderError } from './errors';
+import { recordRetry } from './_telemetry';
 
 type SleepImpl = (ms: number) => Promise<void>;
 
@@ -63,6 +64,7 @@ export async function fetchWithRetry(
       // Network-level failure (DNS, TLS, connection reset). Treat as a 5xx
       // for retry purposes: try once more after the 5xx delay.
       if (attempts === 1) {
+        recordRetry('network', RETRY_5XX_DELAY_MS);
         await sleepImpl(RETRY_5XX_DELAY_MS);
         continue;
       }
@@ -79,12 +81,14 @@ export async function fetchWithRetry(
     if (res.ok) return res;
 
     if (res.status >= 500 && res.status <= 599 && attempts === 1) {
+      recordRetry('fivexx', RETRY_5XX_DELAY_MS);
       await sleepImpl(RETRY_5XX_DELAY_MS);
       continue;
     }
 
     if (res.status === 429 && attempts === 1) {
       const wait = parseRetryAfter(res.headers.get('retry-after')) ?? RETRY_429_DEFAULT_DELAY_MS;
+      recordRetry('fourTwentyNine', wait);
       await sleepImpl(wait);
       continue;
     }
