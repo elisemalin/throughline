@@ -2,6 +2,32 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/backend-core/d3] — 2026-05-16
+
+### Added
+- `lib/server/anthropic-key.ts` — `requireAnthropicKey(req)` extracts the BYOK key from the `x-anthropic-key` header; 400 `missing_anthropic_key` when absent.
+- `/app/api/webhooks/clerk/route.ts` — Svix-signature-verified receiver for Clerk `user.*` events. On `user.created` / `user.updated`, upserts the local `User` row keyed by Clerk user ID. Public route via `middleware.ts` `isPublicRoute` matcher; signature verification is the only defense.
+- 16th test file `tests/api/webhooks-clerk.test.ts` (6 tests). Each AI route gained a `400 missing_anthropic_key` test. Total: 16 files, 83 tests.
+
+### Changed
+- Removed the Day-2 compatibility shims from `lib/ai/index.ts` (the bottom-of-file `run*` aliases + `MOCK_INGEST_WARNINGS`) and `lib/ats/registry.ts` (`getAdapter` / `triggerPoll`).
+- All 8 AI-generation routes (`alignment`, `documents/resume`, `documents/cover-letter`, `documents/ninety-day-plan`, `documents/dossier`, `interviews/mock`, `skills/ingest`, `applications/[id]/alignment`) now read `x-anthropic-key` and call the real namespace exports (`alignment`, `resume`, `coverLetter`, `ninetyDay`, `dossier`, `mockInterview`, `skillsIngest`) with `{ apiKey }`.
+- `/api/watchlist` POST swapped `getAdapter(provider)` → `ATS_ADAPTERS[provider]`.
+- `/api/discovery/poll` repurposed: returns `polledAt = max(WatchlistCompany.lastPolled)` + live `DiscoveredPosting.count` + `newPostings: 0`. No on-demand trigger (cron in `/jobs/poll.ts` is the only poller).
+- AI shape-failure responses: status `502 → 422` (`ai_invalid_response`). Frontend renders a "regenerate" affordance distinct from gateway failures.
+- `middleware.ts`: appended `/api/webhooks/clerk` to `isPublicRoute`. Foundation-owned file; coordinated via PR description.
+- `.env.example`: added `CLERK_WEBHOOK_SIGNING_SECRET`.
+- `vitest.config.ts`: added `setupFiles: ['./tests/api/_setup.ts']` so the Clerk + Prisma vi.mock factories apply across the api suite. Other suites (security/ai/ats) do not import either module so the mocks are inert there.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` and `/lib/mock-api.ts` untouched.
+
+### Coordination handoffs
+- **AI Integration Day-3**: when `SkillsIngestRawSchema` gains `warnings: string[]`, surface those in the `/api/skills/ingest` response. Today the handler returns `warnings: []` with a TODO.
+- **Foundation**: `middleware.ts` `isPublicRoute` matcher gained `/api/webhooks/clerk`. Noted in the PR description.
+
+### Carried over
+- Real-DB integration tests (the webhook + JIT User flow against a Postgres test DB) deferred to QA Day 4 once Neon credentials land.
 ## [agent/external-adapter/d3] — 2026-05-16
 
 ### Added

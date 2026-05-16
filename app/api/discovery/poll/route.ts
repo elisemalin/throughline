@@ -1,12 +1,16 @@
 // POST /api/discovery/poll
 //
-// Manually triggers an ATS poll for the caller's watchlist. External Adapter
-// owns the actual polling job; Backend Core dispatches via the registry's
-// triggerPoll entry point and returns a snapshot of the resulting feed size.
+// Returns a freshness snapshot of the caller's watchlist. The actual ATS
+// polling happens on a daily Inngest cron in /jobs/poll.ts — there is no
+// on-demand trigger today. This route reports:
+//   - polledAt: max(WatchlistCompany.lastPolled) across the caller's rows,
+//     or the current time when no rows have been polled yet
+//   - totalPostings: live count of the caller's DiscoveredPosting rows
+//   - newPostings: always 0 (no synchronous poll fired)
+// Frontend renders polledAt as the "last refreshed" timestamp.
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
-import { triggerPoll } from '@/lib/ats/registry';
 import { requireUserId } from '@/lib/server/auth';
 
 export async function POST() {
@@ -14,16 +18,18 @@ export async function POST() {
   if (gate instanceof Response) return gate;
   const userId = gate;
 
-  const result = await triggerPoll(userId);
-  // totalPostings reflects the live row count even when the trigger itself
-  // is async (Inngest) — the Day-2 mock surfaces 0 newPostings but the
-  // total comes from the DB so Frontend's "x postings" badge stays accurate.
-  const total = await prisma.discoveredPosting.count({
-    where: { ownerId: userId },
-  });
+  const [total, freshness] = await Promise.all([
+    prisma.discoveredPosting.count({ where: { ownerId: userId } }),
+    prisma.watchlistCompany.aggregate({
+      where: { ownerId: userId },
+      _max: { lastPolled: true },
+    }),
+  ]);
+
+  const polledAt = (freshness._max.lastPolled ?? new Date()).toISOString();
   return NextResponse.json({
-    newPostings: result.newPostings,
+    newPostings: 0,
     totalPostings: total,
-    polledAt: result.polledAt,
+    polledAt,
   });
 }

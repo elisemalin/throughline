@@ -8,9 +8,10 @@
 import { NextResponse } from 'next/server';
 import { DocumentResponseSchema, ResumeRequestSchema } from '@/contracts/api';
 import type { Application, SkillsDB } from '@/contracts/models';
-import { runResume } from '@/lib/ai';
+import { resume } from '@/lib/ai';
 import { prisma } from '@/lib/db/prisma';
 import { projectApplication } from '@/lib/db/serialize';
+import { requireAnthropicKey } from '@/lib/server/anthropic-key';
 import { requireUserId } from '@/lib/server/auth';
 import { fromZodError, jsonError, readJson } from '@/lib/server/response';
 import { readSkillsDB } from '@/lib/server/skills';
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
   if (gate instanceof Response) return gate;
   const userId = gate;
 
+  const keyGate = requireAnthropicKey(req);
+  if (keyGate instanceof Response) return keyGate;
+  const apiKey = keyGate;
+
   const body = await readJson(req);
   if (body instanceof Response) return body;
   const parsed = ResumeRequestSchema.safeParse(body);
@@ -57,7 +62,7 @@ export async function POST(req: Request) {
   }
 
   const skillsDB = (await readSkillsDB(userId)) ?? emptySkillsDB(userId);
-  const raw = await runResume({ skillsDB, application });
+  const raw = await resume({ skillsDB, application }, { apiKey });
 
   const title = application
     ? `Resume for ${application.role}${application.company ? ` (${application.company})` : ''}`

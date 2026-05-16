@@ -20,8 +20,9 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { applySecurityMiddleware } from '@/middleware.security';
 
 // Matchers list explicit public routes; anything not matched here requires
-// a signed-in session. The webhook route is verified by Svix signature in
-// the handler; bypassing auth here is intentional.
+// a signed-in session. `/api/webhooks/clerk` is unauthenticated by design —
+// Clerk posts to it directly from their service. Svix signature
+// verification inside the handler is the real defense.
 const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
