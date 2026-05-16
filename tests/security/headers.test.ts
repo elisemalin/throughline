@@ -1,57 +1,77 @@
 // Security headers test.
 //
-// WHY a direct withSecurityHeaders() call, not a full Next.js request: this
-// surface IS the header attachment helper. The middleware composes it
-// around NextResponse.next() so verifying the helper covers the contract;
-// integration with Foundation's middleware.ts is reviewed at PR-time, not
-// asserted here (Foundation owns that file).
+// WHY direct buildSecurityHeaders + withSecurityHeaders calls, not a full
+// Next request: these helpers ARE the header attachment surface. The
+// composed middleware that wraps them is covered separately in
+// middleware-composition.test.ts; the nonce migration specifics are in
+// csp-nonce.test.ts. This file pins the shape of the seven-header set.
 
 import { NextResponse } from 'next/server';
 import { describe, expect, it } from 'vitest';
 import {
-  SECURITY_HEADERS,
+  STATIC_SECURITY_HEADERS,
+  buildSecurityHeaders,
   isAiRoute,
   isApiRoute,
   withSecurityHeaders,
 } from '@/middleware.security';
 
-describe('withSecurityHeaders', () => {
-  it('attaches the full expected header set', () => {
-    const res = withSecurityHeaders(NextResponse.next());
-    const expected = [
-      'Content-Security-Policy',
-      'Strict-Transport-Security',
-      'X-Frame-Options',
-      'X-Content-Type-Options',
-      'Referrer-Policy',
-      'Permissions-Policy',
-      'Cross-Origin-Opener-Policy',
-    ];
-    for (const name of expected) {
-      expect(res.headers.get(name)).toBe(SECURITY_HEADERS[name]);
+const EXPECTED_HEADER_NAMES = [
+  'Content-Security-Policy',
+  'Strict-Transport-Security',
+  'X-Frame-Options',
+  'X-Content-Type-Options',
+  'Referrer-Policy',
+  'Permissions-Policy',
+  'Cross-Origin-Opener-Policy',
+];
+
+describe('buildSecurityHeaders / withSecurityHeaders', () => {
+  it('returns the full seven-header set', () => {
+    const headers = buildSecurityHeaders({ nonce: 'test-nonce', isDev: false });
+    for (const name of EXPECTED_HEADER_NAMES) {
+      expect(headers[name]).toBeTruthy();
     }
-    // Header count is asserted so adding/removing a header forces the
-    // /docs/threat-model.md table to be updated in the same diff.
-    expect(Object.keys(SECURITY_HEADERS)).toHaveLength(7);
+    expect(Object.keys(headers)).toHaveLength(7);
+  });
+
+  it('attaches every header to a NextResponse via withSecurityHeaders', () => {
+    const res = withSecurityHeaders(NextResponse.next(), {
+      nonce: 'test-nonce',
+      isDev: false,
+    });
+    for (const name of EXPECTED_HEADER_NAMES) {
+      expect(res.headers.get(name)).toBeTruthy();
+    }
+  });
+
+  it('STATIC_SECURITY_HEADERS lists the six non-CSP headers', () => {
+    // Header count is asserted so adding/removing one forces the
+    // threat-model.md table to be updated in the same diff.
+    expect(Object.keys(STATIC_SECURITY_HEADERS)).toHaveLength(6);
+    for (const name of EXPECTED_HEADER_NAMES) {
+      if (name === 'Content-Security-Policy') continue;
+      expect(STATIC_SECURITY_HEADERS[name]).toBeTruthy();
+    }
   });
 
   it('CSP allows Anthropic + Clerk origins for connect-src', () => {
-    const csp = SECURITY_HEADERS['Content-Security-Policy']!;
+    const csp = buildSecurityHeaders({ nonce: 'n', isDev: false })['Content-Security-Policy']!;
     expect(csp).toContain('https://api.anthropic.com');
     expect(csp).toContain('clerk.com');
   });
 
   it('CSP denies framing entirely', () => {
-    const csp = SECURITY_HEADERS['Content-Security-Policy']!;
+    const csp = buildSecurityHeaders({ nonce: 'n', isDev: false })['Content-Security-Policy']!;
     expect(csp).toContain("frame-ancestors 'none'");
   });
 
   it('HSTS uses a 1-year max-age', () => {
-    expect(SECURITY_HEADERS['Strict-Transport-Security']).toContain('max-age=31536000');
+    expect(STATIC_SECURITY_HEADERS['Strict-Transport-Security']).toContain('max-age=31536000');
   });
 
   it('Permissions-Policy disables camera, microphone, geolocation', () => {
-    const pp = SECURITY_HEADERS['Permissions-Policy']!;
+    const pp = STATIC_SECURITY_HEADERS['Permissions-Policy']!;
     expect(pp).toContain('camera=()');
     expect(pp).toContain('microphone=()');
     expect(pp).toContain('geolocation=()');
