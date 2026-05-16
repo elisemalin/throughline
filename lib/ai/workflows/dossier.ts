@@ -33,11 +33,20 @@ type WebSearchTool20250305 = {
   user_location?: { type: 'approximate'; country?: string; city?: string };
 };
 
-const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
-  type: 'web_search_20250305',
-  name: 'web_search',
-  max_uses: 5,
-};
+// Default web_search budget for one dossier call. WHY 5: empirically the
+// model issues 2-4 searches for a well-known company and tops out around
+// 5 for an obscure one. Lowering this to e.g. 2 caps token spend per
+// dossier (each tool call carries its own input/output token weight in
+// the billed usage); raising it past 5 has diminishing recall.
+export const DEFAULT_WEB_SEARCH_MAX_USES = 5;
+
+function webSearchTool(maxUses: number): WebSearchTool20250305 {
+  return {
+    type: 'web_search_20250305',
+    name: 'web_search',
+    max_uses: maxUses,
+  };
+}
 
 const DOSSIER_OUTPUT_HINT = `Output JSON shape (return EXACTLY this key):
 {
@@ -57,11 +66,21 @@ export function buildDossierUser(input: DossierInput): string {
   ].join('\n');
 }
 
+export type DossierOpts = {
+  model?: string;
+  signal?: AbortSignal;
+  // Per-call web_search budget. Defaults to DEFAULT_WEB_SEARCH_MAX_USES.
+  // Backend Core can lower this for cost-sensitive callers (e.g. a free
+  // tier) without redeploying.
+  webSearchMaxUses?: number;
+};
+
 export function runDossier(
   client: Anthropic,
   input: DossierInput,
-  opts: { model?: string; signal?: AbortSignal } = {},
+  opts: DossierOpts = {},
 ): Promise<DossierRawOutput> {
+  const maxUses = opts.webSearchMaxUses ?? DEFAULT_WEB_SEARCH_MAX_USES;
   return invokeOneShot({
     workflow: 'dossier',
     system: DOSSIER_SYSTEM,
@@ -71,13 +90,13 @@ export function runDossier(
     model: opts.model,
     signal: opts.signal,
     maxTokens: 8_192,
-    tools: [WEB_SEARCH_TOOL],
+    tools: [webSearchTool(maxUses)],
   });
 }
 
 export function dossier(
   input: DossierInput,
-  opts: CallOptions,
+  opts: CallOptions & Pick<DossierOpts, 'webSearchMaxUses'>,
 ): Promise<DossierRawOutput> {
   return runDossier(createClient(opts.apiKey), input, opts);
 }
