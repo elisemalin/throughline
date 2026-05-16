@@ -170,6 +170,27 @@ The split-return shape (helper returns either `Response` or a typed value) keeps
 ### Clerk webhook receiver at `/api/webhooks/clerk` provisions User rows JIT
 
 **Why:** Every Backend Core write that sets `ownerId` to the Clerk userId would fail on the foreign-key constraint without a corresponding `User` row. Rather than upserting User on every request (one round-trip per call), the webhook listens for `user.created` / `user.updated` events from Clerk and upserts at sign-up time. The route is public (added to `isPublicRoute` in `middleware.ts`); Svix signature verification inside the handler (`new Webhook(secret).verify(body, headers)`) is the real defense. New env var: `CLERK_WEBHOOK_SIGNING_SECRET`.
+### ATS adapter retry policy (Day 3)
+
+**Why:** Day 2 shipped `fetchPostings` as "throw on any non-2xx" — fine for the unit suite but every transient 5xx in production would lose the entire row's pass that day. The poller's 2-second per-provider gap is a politeness floor, not a retry strategy; without an explicit back-off, a five-second outage at Greenhouse loses 100% of Greenhouse postings until the next 06:00 UTC run.
+
+**Rule:** All adapter `fetchPostings` calls route through `fetchWithRetry` in `lib/ats/_http.ts`. Policy:
+
+- 5xx (and connection-level fetch rejections): retry once after `RETRY_5XX_DELAY_MS` (5 s).
+- 429: retry once. If `Retry-After` is set (seconds or HTTP-date), honor it; else wait `RETRY_429_DEFAULT_DELAY_MS` (30 s).
+- 4xx other than 429: throw immediately. The slug is almost certainly bad and retrying is wasted budget.
+
+Failures bubble as `AtsProviderError` (`provider`, `slug`, `status`, `attempts`, `message`). The poller catches `AtsProviderError` specifically and stamps a structured entry into the sweep's `errors[]` summary so an operator (or Inngest's UI) can read which row, which provider, and which HTTP status without prose parsing.
+
+**Test seam:** `__setSleepImplForTests(fn)` in `lib/ats/_http.ts` swaps the sleep impl so the unit suite never waits the real 5 / 30 seconds. Production code never calls it.
+
+### `DATABASE_URL_TEST` convention (Day 3)
+
+**Why:** The ATS integration test (`tests/ats/integration/poll.integration.test.ts`) seeds three `WatchlistCompany` rows, runs the real Greenhouse fetch end-to-end, and writes to `DiscoveredPosting`. Pointing that test at the dev `DATABASE_URL` pollutes the dev DB with rows that look like real user data; pointing it at production is unthinkable. Neon's cheap-branch model gives us a clean separation.
+
+**Rule:** Integration tests pick `DATABASE_URL_TEST` first; fall back to `DATABASE_URL` with a printed warning if the latter is the only one present. Production runtime code only reads `DATABASE_URL`. CI (`.github/workflows/ats-integration.yml`) requires `DATABASE_URL_TEST` to be set as a secret — the job no-ops cleanly when the secret is absent (so PRs from forks don't fail with "missing secret").
+
+**Cleanup:** The integration test deletes every row it creates in `afterAll`, identified by a fixed `TEST_OWNER_ID` (`ats-integration-owner`). Manual cleanup against the Neon test branch: `DELETE FROM "DiscoveredPosting" WHERE "ownerId" = 'ats-integration-owner'; DELETE FROM "WatchlistCompany" WHERE "ownerId" = 'ats-integration-owner'; DELETE FROM "User" WHERE id = 'ats-integration-owner';`.
 
 ---
 

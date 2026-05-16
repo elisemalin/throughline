@@ -1,0 +1,53 @@
+{
+  "score": 38,
+  "requirements": [
+    {
+      "requirement": "Own the developer-tooling surface for a payments platform",
+      "strength": 3,
+      "type": "partial",
+      "evidence": "Candidate owned an internal pipeline rewrite end-to-end, showing ownership capability, but no developer-tooling products or payments-domain experience are present.",
+      "recommendation": "Highlight any internal CLI tools, SDKs, or developer portals built at Example Co; if none exist, pursue a side project or contribution in a developer-tooling context."
+    },
+    {
+      "requirement": "Partner with payments infrastructure teams",
+      "strength": 1,
+      "type": "missing",
+      "evidence": "No payments industry experience, fintech projects, or cross-team infrastructure partnership examples appear anywhere in the skills database.",
+      "recommendation": "Add explicit examples of cross-functional collaboration with infra or platform teams; seek exposure to payments systems through open-source projects or certifications."
+    },
+    {
+      "requirement": "Reduce on-call load (operational reliability engineering)",
+      "strength": 5,
+      "type": "partial",
+      "evidence": "Pipeline rewrite eliminated failures over 90 days, demonstrating measurable reliability improvement, but no on-call ownership, alerting work, or incident-reduction framing is documented.",
+      "recommendation": "Reframe the pipeline reliability result explicitly in on-call terms (e.g., 'eliminated pages related to ETL failures') and document any incident-response or runbook work."
+    },
+    {
+      "requirement": "Improve observability across the request path",
+      "strength": 4,
+      "type": "partial",
+      "evidence": "'Observability' appears as a keyword in the skills database, but no concrete observability tooling, instrumentation work, tracing, or metrics pipelines are evidenced in any project.",
+      "recommendation": "Document a specific observability implementation (e.g., adding distributed tracing or dashboards to the ETL pipeline) with concrete tools such as OpenTelemetry, Datadog, or Grafana."
+    },
+    {
+      "requirement": "Senior-level engineering ownership and seniority",
+      "strength": 7,
+      "type": "strong",
+      "evidence": "Held Senior Engineer title at Example Co, owned end-to-end pipeline rewrite with measurable outcomes (8h → 45min runtime), and lists distributed systems as a core skill.",
+      "recommendation": "Strengthen the case by adding examples of mentorship, architectural decision records, or technical leadership beyond a single project."
+    }
+  ],
+  "missingKeywords": [
+    "payments",
+    "developer tooling",
+    "on-call",
+    "incident response",
+    "distributed tracing",
+    "observability platform",
+    "OpenTelemetry",
+    "fintech",
+    "request path",
+    "platform engineering"
+  ],
+  "recommendation": "Smoke Candidate is a weak-to-moderate fit. Core strengths in reliability engineering and end-to-end ownership are relevant, but critical gaps in payments domain knowledge, developer-tooling products, and concrete observability implementation make this a stretch role. Before applying, the candidate should document observability and on-call work more explicitly, frame reliability wins in operational terms, and ideally acquire any payments or fintech exposure to close the domain gap."
+}

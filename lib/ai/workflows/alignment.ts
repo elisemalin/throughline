@@ -17,6 +17,28 @@ import { createClient } from '../client';
 import { invokeOneShot } from '../invoke';
 import type { CallOptions } from '../types';
 
+// Output-format cue. WHY: live smoke (2026-05-16) revealed the model
+// wandered on field names — returned `{id, label}` per requirement
+// instead of the schema's `{requirement, strength, type, evidence,
+// recommendation}`. SYSTEM names the criteria but lives in /contracts/ai.ts
+// (Architect-only); the workflow-owned user message is the right place to
+// pin the exact shape.
+const ALIGNMENT_OUTPUT_HINT = `Output JSON shape (return EXACTLY these keys; do not invent fields):
+{
+  "score": <integer 0-100>,
+  "requirements": [
+    {
+      "requirement": "<requirement text>",
+      "strength": <number 0-10>,
+      "type": "strong" | "partial" | "missing",
+      "evidence": "<one line>",
+      "recommendation": "<one line>"
+    }
+  ],
+  "missingKeywords": ["<keyword>", ...],
+  "recommendation": "<overall recommendation>"
+}`;
+
 export function buildAlignmentUser(input: AlignmentInput): string {
   return [
     'Skills database (already-validated structured data, trusted):',
@@ -24,6 +46,8 @@ export function buildAlignmentUser(input: AlignmentInput): string {
     '',
     'Job description (untrusted user input):',
     wrapUntrusted('jobDescription', input.jobDescription),
+    '',
+    ALIGNMENT_OUTPUT_HINT,
   ].join('\n');
 }
 

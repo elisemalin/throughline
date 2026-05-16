@@ -7,6 +7,7 @@
 import type { AtsAdapter } from '@/contracts/ats';
 import { ATS_ENDPOINTS } from '@/contracts/ats';
 import { atsSlugSchema } from '@/contracts/models';
+import { fetchWithRetry } from './_http';
 
 // Subset of the Greenhouse posting we consume. The wire response carries more
 // fields (departments, offices, metadata, requisition_id, etc.); we only type
@@ -73,13 +74,11 @@ function detectRemote(locationName: string, officeNames: string[]): boolean {
 }
 
 async function fetchBoard(slug: string): Promise<GreenhouseResponse> {
-  const res = await fetch(ATS_ENDPOINTS.greenhouse(slug), {
-    method: 'GET',
-    headers: { accept: 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`Greenhouse ${slug}: HTTP ${res.status}`);
-  }
+  const res = await fetchWithRetry(
+    ATS_ENDPOINTS.greenhouse(slug),
+    { method: 'GET', headers: { accept: 'application/json' } },
+    { provider: 'greenhouse', slug },
+  );
   return (await res.json()) as GreenhouseResponse;
 }
 

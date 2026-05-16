@@ -29,6 +29,13 @@ function buildApplicationBlock(input: ResumeInput): string {
   ].join('\n');
 }
 
+// Output-format cue added per the Day-3 live-smoke "tighten the prompt"
+// pattern. Body is Markdown; the wrapper is JSON-with-one-field.
+const RESUME_OUTPUT_HINT = `Output JSON shape (return EXACTLY this key):
+{
+  "body": "<Markdown resume as a single string>"
+}`;
+
 export function buildResumeUser(input: ResumeInput): string {
   return [
     'Skills database (trusted structured data):',
@@ -36,6 +43,8 @@ export function buildResumeUser(input: ResumeInput): string {
     '',
     'Target application context (untrusted user input):',
     buildApplicationBlock(input),
+    '',
+    RESUME_OUTPUT_HINT,
   ].join('\n');
 }
 
