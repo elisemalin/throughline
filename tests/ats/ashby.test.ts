@@ -1,8 +1,10 @@
 // Ashby adapter unit tests.
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NormalizedPostingSchema } from '@/contracts/ats';
 import { ashbyAdapter, type AshbyRawJob } from '@/lib/ats/ashby';
+import { AtsProviderError } from '@/lib/ats/errors';
+import { __setSleepImplForTests } from '@/lib/ats/_http';
 import linearFixture from '../fixtures/ats/ashby/ashby-linear.json' with { type: 'json' };
 
 interface FixtureShape {
@@ -25,8 +27,13 @@ function mockFetchOnce(body: unknown, init: { status?: number; ok?: boolean } = 
   );
 }
 
+beforeEach(() => {
+  __setSleepImplForTests(async () => undefined);
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  __setSleepImplForTests(undefined);
 });
 
 describe('ashbyAdapter.normalize', () => {
@@ -64,9 +71,25 @@ describe('ashbyAdapter.fetchPostings', () => {
     expect(result).toHaveLength(2);
   });
 
-  it('throws on non-2xx', async () => {
-    mockFetchOnce({}, { status: 500, ok: false });
-    await expect(ashbyAdapter.fetchPostings('linear')).rejects.toThrow(/HTTP 500/);
+  it('throws AtsProviderError immediately on 4xx (not retried)', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('{}', { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(ashbyAdapter.fetchPostings('linear')).rejects.toMatchObject({
+      status: 400,
+      provider: 'ashby',
+      slug: 'linear',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries once on 5xx then throws AtsProviderError', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 502 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 502 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(ashbyAdapter.fetchPostings('linear')).rejects.toBeInstanceOf(AtsProviderError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

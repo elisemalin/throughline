@@ -19,6 +19,13 @@ export default defineConfig({
     globals: false,
     pool: 'forks',
     testTimeout: 30_000,
+    // WHY: Backend Core's tests/api/** suite mocks @clerk/nextjs/server and
+    // @/lib/db/prisma via vi.mock in this setup file. vi.mock factory bodies
+    // are hoisted per test file, so the calls must live in a setupFile to
+    // apply globally across the suite. Other suites (tests/security,
+    // tests/ai, tests/ats) do not import either module, so the mocks are
+    // inert in those contexts.
+    setupFiles: ['./tests/api/_setup.ts'],
   },
   resolve: {
     alias: {

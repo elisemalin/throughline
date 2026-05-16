@@ -23,6 +23,15 @@ import { extractText } from './client';
 import { promptHash } from './hash';
 import { withValidationRetry, type SchemaWithOutput } from './retry';
 
+// A workflow can pass either an SDK-typed client tool (which carries an
+// input_schema) or a server tool like `web_search_20250305` whose shape
+// the SDK's `Messages.Tool` union does not yet model. Workflows pass
+// properly-typed objects; the single cast at the SDK call site below
+// keeps the type-laundering narrow and auditable.
+export type ToolParam =
+  | Anthropic.Messages.Tool
+  | { type: string; name: string; [key: string]: unknown };
+
 export type InvokeArgs<T> = {
   workflow: string;
   system: string;
@@ -35,7 +44,7 @@ export type InvokeArgs<T> = {
   // Optional tools (used by dossier for web_search). Passed through to the
   // SDK as-is; not part of the cache key beyond what the system/user
   // strings already encode.
-  tools?: Anthropic.Messages.Tool[];
+  tools?: ToolParam[];
 };
 
 // Defensive JSON extraction: the SYSTEM prompts forbid markdown fences, but
@@ -74,7 +83,10 @@ export async function invokeOneShot<T>(args: InvokeArgs<T>): Promise<T> {
         max_tokens: args.maxTokens ?? 4_096,
         system: extraSystem ? `${args.system}${extraSystem}` : args.system,
         messages: [{ role: 'user', content: args.user }],
-        ...(args.tools ? { tools: args.tools } : {}),
+        // Single cast: the SDK's `tools` param is typed as the narrower
+        // client-tool union but accepts server-tool shapes at runtime.
+        // See the ToolParam comment above.
+        ...(args.tools ? { tools: args.tools as Anthropic.Messages.Tool[] } : {}),
       },
       args.signal ? { signal: args.signal } : undefined,
     );

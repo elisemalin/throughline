@@ -58,6 +58,7 @@ export function ingestFixture(resumeText: string): IngestRawOutput {
     methods: [],
     domains: [],
     keywords: [],
+    warnings: ['mock-ingest: no parsing performed during sprint'],
   };
 }
 

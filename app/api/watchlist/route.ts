@@ -6,7 +6,7 @@ import { WatchlistAddSchema } from '@/contracts/api';
 import { WatchlistCompanySchema } from '@/contracts/models';
 import { prisma } from '@/lib/db/prisma';
 import { projectWatchlistCompany } from '@/lib/db/serialize';
-import { getAdapter } from '@/lib/ats/registry';
+import { ATS_ADAPTERS } from '@/lib/ats/registry';
 import { requireUserId } from '@/lib/server/auth';
 import { fromZodError, jsonError, readJson } from '@/lib/server/response';
 
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   const parsed = WatchlistAddSchema.safeParse(body);
   if (!parsed.success) return fromZodError(parsed.error);
 
-  const validation = await getAdapter(parsed.data.atsProvider).validateSlug(
+  const validation = await ATS_ADAPTERS[parsed.data.atsProvider].validateSlug(
     parsed.data.atsSlug,
   );
 

@@ -6,9 +6,10 @@
 import { NextResponse } from 'next/server';
 import { ApplicationAlignmentResponseSchema } from '@/contracts/api';
 import type { SkillsDB } from '@/contracts/models';
-import { runAlignment } from '@/lib/ai';
+import { alignment } from '@/lib/ai';
 import { prisma } from '@/lib/db/prisma';
 import { projectApplication } from '@/lib/db/serialize';
+import { requireAnthropicKey } from '@/lib/server/anthropic-key';
 import { requireUserId } from '@/lib/server/auth';
 import { jsonError } from '@/lib/server/response';
 import { readSkillsDB } from '@/lib/server/skills';
@@ -35,10 +36,15 @@ function emptySkillsDB(userId: string): SkillsDB {
   };
 }
 
-export async function POST(_req: Request, ctx: Ctx) {
+export async function POST(req: Request, ctx: Ctx) {
   const gate = await requireUserId();
   if (gate instanceof Response) return gate;
   const userId = gate;
+
+  const keyGate = requireAnthropicKey(req);
+  if (keyGate instanceof Response) return keyGate;
+  const apiKey = keyGate;
+
   const { id } = await ctx.params;
 
   const row = await prisma.application.findFirst({
@@ -49,10 +55,10 @@ export async function POST(_req: Request, ctx: Ctx) {
   }
 
   const skillsDB = (await readSkillsDB(userId)) ?? emptySkillsDB(userId);
-  const analysis = await runAlignment({
-    skillsDB,
-    jobDescription: row.jobDescription ?? '',
-  });
+  const analysis = await alignment(
+    { skillsDB, jobDescription: row.jobDescription ?? '' },
+    { apiKey },
+  );
 
   const updated = await prisma.application.update({
     where: { id },
@@ -64,7 +70,7 @@ export async function POST(_req: Request, ctx: Ctx) {
     application: projected,
   });
   if (!validated.success) {
-    return jsonError(500, 'serialization_failed', 'Persisted row failed contract validation.');
+    return jsonError(422, 'serialization_failed', 'Persisted row failed contract validation.');
   }
   return NextResponse.json(validated.data);
 }

@@ -14,6 +14,11 @@ import { createClient } from '../client';
 import { invokeOneShot } from '../invoke';
 import type { CallOptions } from '../types';
 
+const COVER_LETTER_OUTPUT_HINT = `Output JSON shape (return EXACTLY this key):
+{
+  "body": "<Markdown cover letter as a single string>"
+}`;
+
 export function buildCoverLetterUser(input: CoverLetterInput): string {
   const app = input.application;
   const blocks: string[] = [
@@ -30,6 +35,7 @@ export function buildCoverLetterUser(input: CoverLetterInput): string {
     blocks.push('', 'Custom notes from the candidate (untrusted user input):');
     blocks.push(wrapUntrusted('customNotes', input.customNotes));
   }
+  blocks.push('', COVER_LETTER_OUTPUT_HINT);
   return blocks.join('\n');
 }
 

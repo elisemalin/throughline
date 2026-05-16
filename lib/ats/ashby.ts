@@ -7,6 +7,7 @@
 import type { AtsAdapter } from '@/contracts/ats';
 import { ATS_ENDPOINTS } from '@/contracts/ats';
 import { atsSlugSchema } from '@/contracts/models';
+import { fetchWithRetry } from './_http';
 
 export interface AshbyRawJob {
   id: string;
@@ -72,11 +73,11 @@ export const ashbyAdapter: AtsAdapter<AshbyRawJob> = {
   },
 
   async fetchPostings(slug) {
-    const res = await fetch(ATS_ENDPOINTS.ashby(slug), {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Ashby ${slug}: HTTP ${res.status}`);
+    const res = await fetchWithRetry(
+      ATS_ENDPOINTS.ashby(slug),
+      { method: 'GET', headers: { accept: 'application/json' } },
+      { provider: 'ashby', slug },
+    );
     const data = (await res.json()) as AshbyResponse;
     return data.jobs ?? [];
   },

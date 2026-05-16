@@ -24,6 +24,16 @@ describe('POST /api/applications/:id/alignment', () => {
     expect(res.status).toBe(401);
   });
 
+  it('returns 400 when x-anthropic-key header is missing', async () => {
+    signedIn();
+    const res = await POST(
+      makeRequest({ method: 'POST', url: URL, apiKey: null }),
+      ctx,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('missing_anthropic_key');
+  });
+
   it('returns 404 when the application is not owned by the caller', async () => {
     signedIn();
     mPrisma.application.findFirst.mockResolvedValueOnce(null);

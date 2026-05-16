@@ -31,12 +31,25 @@ export function signedOut() {
 }
 
 type JsonBody = unknown;
-type ReqInit = { method: string; url: string; body?: JsonBody };
+type ReqInit = {
+  method: string;
+  url: string;
+  body?: JsonBody;
+  // apiKey injects the `x-anthropic-key` BYOK header. Default 'sk-test' so
+  // every AI-route success test exercises the real header read path; pass
+  // `null` to deliberately omit the header for missing-key 400 tests.
+  apiKey?: string | null;
+};
 
-export function makeRequest({ method, url, body }: ReqInit): Request {
+const DEFAULT_API_KEY = 'sk-test';
+
+export function makeRequest({ method, url, body, apiKey }: ReqInit): Request {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  const resolvedKey = apiKey === null ? undefined : (apiKey ?? DEFAULT_API_KEY);
+  if (resolvedKey) headers['x-anthropic-key'] = resolvedKey;
   return new Request(url, {
     method,
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }

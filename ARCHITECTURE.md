@@ -37,6 +37,7 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 | `@upstash/redis` + `@upstash/ratelimit` | Both installed on Day 2 — `@upstash/redis` lands first via AI Integration's `/lib/ai/cache.ts` (prompt-hash cache), and Security adds `@upstash/ratelimit` for the sliding-window rate limiter at `/lib/security/rate-limit.ts`. `@upstash/redis` 1.34.x is the Edge-compatible REST client; `@upstash/ratelimit` 2.0.x is the sliding-window helper. |
 | `vitest` 2.1.9 | Installed on Day 2 by the first agent to need it. Node-environment runner used by `/tests/security/**`, `/tests/ai/**`, `/tests/ats/**`, and `/tests/api/**`. Chosen over Jest because the studio targets a single TS-first runner and Vitest reuses the tsconfig `@/*` alias natively. Pinned to 2.1.9 (last 2.x release on Node 22). |
 | `tsx` (dev) | AI Integration Agent installs on Day 2 to run `lib/ai/smoke.ts` (the one-call-per-workflow live smoke) as a plain Node script under `pnpm test:ai:live`. No bundler, no Next runtime needed — `tsx` executes the TS file directly. |
+| `svix` 1.x | Backend Core installs on Day 3 to verify Clerk webhook signatures at `/api/webhooks/clerk`. Svix is Clerk's signing provider; their docs ship `svix.Webhook` as the canonical verifier. Verifying inside the handler is the only defense for that public route (no Clerk middleware gate). |
 
 Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.
 
@@ -150,6 +151,47 @@ The split-return shape (helper returns either `Response` or a typed value) keeps
 
 **For External Adapter:** same pattern — delete `/lib/ats/__mock__/`, overwrite `/lib/ats/registry.ts` keeping `getAdapter(provider)` and `triggerPoll(ownerId)` exports.
 
+### BYOK Anthropic key flows through the `x-anthropic-key` request header
+
+**Why:** Throughline's BYOK model — the user holds the Anthropic key in browser localStorage (encrypted at rest via `/lib/security/crypto.ts`) — means the server reads the key per-request rather than storing or proxying it. Frontend forwards the decrypted key on every AI-route call as `x-anthropic-key`; Backend Core extracts it with `requireAnthropicKey` (in `/lib/server/anthropic-key.ts`) and passes it to the AI workflow's `CallOptions.apiKey`. The server NEVER persists, logs, or caches the key. See `/contracts/storage.ts` SERVER_NEVER_STORES list.
+
+**Rule:** every `/app/api/*` route that calls an AI workflow MUST gate on `requireAnthropicKey(req)` before any workflow call. Missing or empty header returns `400 missing_anthropic_key`. There is no fallback to a server-side key — the entire AI surface is BYOK.
+
+### `/api/discovery/poll` is a freshness snapshot, not a synchronous poll trigger
+
+**Why:** ATS polling runs on the daily Inngest cron in `/jobs/poll.ts` (External Adapter's domain). Day 2 left a stub `triggerPoll(ownerId)` that returned zeros; Day 3 repurposes the route to return `polledAt = max(WatchlistCompany.lastPolled)` across the caller's rows, `totalPostings = COUNT(DiscoveredPosting)`, and `newPostings = 0`. The Frontend renders `polledAt` as the "last refreshed" timestamp without an on-demand poll path.
+
+**Cost:** The user cannot force a poll between cron runs. Acceptable for MVP — on-demand polling is a Day-4 product decision, not a Day-3 implementation gap.
+
+### AI workflow shape failures return 422, not 502
+
+**Why:** A 502 response semantically means an upstream gateway failure (per RFC 9110), which a contract-validation failure on a model output is not — the model returned a 200 from Anthropic's side, but the JSON shape didn't match the contract. 422 Unprocessable Entity is the right status: the request was well-formed, but the downstream model output couldn't be processed. Frontend uses the 422 to surface a "regenerate" affordance distinct from the generic "service down" path.
+
+### Clerk webhook receiver at `/api/webhooks/clerk` provisions User rows JIT
+
+**Why:** Every Backend Core write that sets `ownerId` to the Clerk userId would fail on the foreign-key constraint without a corresponding `User` row. Rather than upserting User on every request (one round-trip per call), the webhook listens for `user.created` / `user.updated` events from Clerk and upserts at sign-up time. The route is public (added to `isPublicRoute` in `middleware.ts`); Svix signature verification inside the handler (`new Webhook(secret).verify(body, headers)`) is the real defense. New env var: `CLERK_WEBHOOK_SIGNING_SECRET`.
+### ATS adapter retry policy (Day 3)
+
+**Why:** Day 2 shipped `fetchPostings` as "throw on any non-2xx" — fine for the unit suite but every transient 5xx in production would lose the entire row's pass that day. The poller's 2-second per-provider gap is a politeness floor, not a retry strategy; without an explicit back-off, a five-second outage at Greenhouse loses 100% of Greenhouse postings until the next 06:00 UTC run.
+
+**Rule:** All adapter `fetchPostings` calls route through `fetchWithRetry` in `lib/ats/_http.ts`. Policy:
+
+- 5xx (and connection-level fetch rejections): retry once after `RETRY_5XX_DELAY_MS` (5 s).
+- 429: retry once. If `Retry-After` is set (seconds or HTTP-date), honor it; else wait `RETRY_429_DEFAULT_DELAY_MS` (30 s).
+- 4xx other than 429: throw immediately. The slug is almost certainly bad and retrying is wasted budget.
+
+Failures bubble as `AtsProviderError` (`provider`, `slug`, `status`, `attempts`, `message`). The poller catches `AtsProviderError` specifically and stamps a structured entry into the sweep's `errors[]` summary so an operator (or Inngest's UI) can read which row, which provider, and which HTTP status without prose parsing.
+
+**Test seam:** `__setSleepImplForTests(fn)` in `lib/ats/_http.ts` swaps the sleep impl so the unit suite never waits the real 5 / 30 seconds. Production code never calls it.
+
+### `DATABASE_URL_TEST` convention (Day 3)
+
+**Why:** The ATS integration test (`tests/ats/integration/poll.integration.test.ts`) seeds three `WatchlistCompany` rows, runs the real Greenhouse fetch end-to-end, and writes to `DiscoveredPosting`. Pointing that test at the dev `DATABASE_URL` pollutes the dev DB with rows that look like real user data; pointing it at production is unthinkable. Neon's cheap-branch model gives us a clean separation.
+
+**Rule:** Integration tests pick `DATABASE_URL_TEST` first; fall back to `DATABASE_URL` with a printed warning if the latter is the only one present. Production runtime code only reads `DATABASE_URL`. CI (`.github/workflows/ats-integration.yml`) requires `DATABASE_URL_TEST` to be set as a secret — the job no-ops cleanly when the secret is absent (so PRs from forks don't fail with "missing secret").
+
+**Cleanup:** The integration test deletes every row it creates in `afterAll`, identified by a fixed `TEST_OWNER_ID` (`ats-integration-owner`). Manual cleanup against the Neon test branch: `DELETE FROM "DiscoveredPosting" WHERE "ownerId" = 'ats-integration-owner'; DELETE FROM "WatchlistCompany" WHERE "ownerId" = 'ats-integration-owner'; DELETE FROM "User" WHERE id = 'ats-integration-owner';`.
+
 ---
 
 ## Day 1 deliverables (Foundation Agent)
@@ -229,3 +271,28 @@ Shipped on branch `agent/backend-core/d2`:
 ### Decision — frontend-local `apiKeyMode` until contract proposal lands
 
 **Why:** Security Agent's `noPassphraseFallback` deliberately produces the same on-disk shape as the strong path. The UI must know which mode wrote the saved key (the unlock paths differ). `ApiKeyMeta` in `/contracts/storage.ts` has no `mode` field. Filed `/contracts/proposals/2026-05-16-frontend-apikey-mode.md` (PENDING REVIEW); the interim storage at `throughline:apiKeyMode` folds into `apiKeyMeta` in one commit once accepted.
+| `storybook` 9.x + `@storybook/nextjs` 9.x + `@storybook/addon-a11y` 9.x | Component documentation + per-story axe-core run. Pinned to Storybook 9 because the 8.x line and Next 15.5 + React 19 collide on a webpack `Cannot read properties of undefined (reading 'tap')` error. |
+
+---
+
+## Day 3 deliverables (Backend Core Agent)
+
+Shipped on branch `agent/backend-core/d3`:
+
+- **Shim removal**: Day-2 compatibility aliases in `lib/ai/index.ts` (`runAlignment` / `runResume` / `runCoverLetter` / `runNinetyDay` / `runDossier` / `runMockInterview` / `runIngest` / `MOCK_INGEST_WARNINGS`) and `lib/ats/registry.ts` (`getAdapter` / `triggerPoll`) deleted. All 8 AI-generation routes and the `/api/watchlist` POST handler now call the real namespace exports directly.
+- **BYOK header wired through every AI route**: new helper `/lib/server/anthropic-key.ts` (`requireAnthropicKey`) returns 400 `missing_anthropic_key` when the `x-anthropic-key` request header is absent. Eight handlers updated: alignment, documents/resume, documents/cover-letter, documents/ninety-day-plan, documents/dossier, interviews/mock, skills/ingest, applications/[id]/alignment.
+- **AI shape-failure status: 502 → 422** per the Decision above.
+- **`/api/discovery/poll` repurposed** to a freshness snapshot (max `WatchlistCompany.lastPolled` + live `DiscoveredPosting` count). No synchronous poll trigger.
+- **Clerk webhook receiver** at `/app/api/webhooks/clerk/route.ts`. Svix signature verification, on `user.created` / `user.updated` upserts the local `User` row, on `user.deleted` ack-only. `/api/webhooks/clerk` added to `isPublicRoute` in `middleware.ts`. New env var `CLERK_WEBHOOK_SIGNING_SECRET` added to `.env.example`.
+- **Tests**: 16 files, 83 tests. Each AI route gained a `400 missing_anthropic_key` test; `/api/webhooks/clerk` has 6 tests covering missing-secret 500, missing-signature 400, invalid-signature 400, user.created upsert path, no-email skip, and user.deleted ack.
+
+### Day 3 Dependencies sub-table
+
+| Package | Why |
+|---|---|
+| `svix` 1.93.0 | Required by Clerk's webhook protocol. Their dashboard signs every outbound event with Svix; the receiver verifies via `new Webhook(secret).verify(body, headers)`. No alternative — Clerk only supports Svix-signed webhooks. |
+
+### Day 3 Coordination handoffs
+
+- **AI Integration Day-3 PR**: when `SkillsIngestRawSchema` gains a `warnings: string[]` field, update `/api/skills/ingest` to forward those warnings in the response instead of the current `warnings: []`. The TODO is marked in-line.
+- **Foundation Agent**: `middleware.ts` `isPublicRoute` matcher gained `/api/webhooks/clerk`. Coordinated via this PR description.

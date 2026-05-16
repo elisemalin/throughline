@@ -26,6 +26,18 @@ describe('POST /api/interviews/mock', () => {
     expect(res.status).toBe(401);
   });
 
+  it('returns 400 when x-anthropic-key header is missing', async () => {
+    signedIn();
+    const res = await POST(makeRequest({
+      method: 'POST',
+      url: URL,
+      body: { applicationId: 'app_test_1', transcript: [] },
+      apiKey: null,
+    }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe('missing_anthropic_key');
+  });
+
   it('returns 400 when transcript is missing', async () => {
     signedIn();
     const res = await POST(makeRequest({

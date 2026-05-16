@@ -29,6 +29,102 @@ Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 - Authenticated-route axe-core + Lighthouse runs (the seven `(app)` routes) gated on QA Agent provisioning `CI_LIVE_CLERK=1`. Day 3 a11y + Lighthouse scope is `/sign-in` plus the Storybook per-story addon-a11y pass.
 - `ApiKeyMeta.mode` lives in a frontend-local localStorage key until the proposal above is accepted.
 - `next lint` deprecation warning still surfaces — Foundation-owned migration to the ESLint CLI.
+## [agent/backend-core/d3] — 2026-05-16
+
+### Added
+- `lib/server/anthropic-key.ts` — `requireAnthropicKey(req)` extracts the BYOK key from the `x-anthropic-key` header; 400 `missing_anthropic_key` when absent.
+- `/app/api/webhooks/clerk/route.ts` — Svix-signature-verified receiver for Clerk `user.*` events. On `user.created` / `user.updated`, upserts the local `User` row keyed by Clerk user ID. Public route via `middleware.ts` `isPublicRoute` matcher; signature verification is the only defense.
+- 16th test file `tests/api/webhooks-clerk.test.ts` (6 tests). Each AI route gained a `400 missing_anthropic_key` test. Total: 16 files, 83 tests.
+
+### Changed
+- Removed the Day-2 compatibility shims from `lib/ai/index.ts` (the bottom-of-file `run*` aliases + `MOCK_INGEST_WARNINGS`) and `lib/ats/registry.ts` (`getAdapter` / `triggerPoll`).
+- All 8 AI-generation routes (`alignment`, `documents/resume`, `documents/cover-letter`, `documents/ninety-day-plan`, `documents/dossier`, `interviews/mock`, `skills/ingest`, `applications/[id]/alignment`) now read `x-anthropic-key` and call the real namespace exports (`alignment`, `resume`, `coverLetter`, `ninetyDay`, `dossier`, `mockInterview`, `skillsIngest`) with `{ apiKey }`.
+- `/api/watchlist` POST swapped `getAdapter(provider)` → `ATS_ADAPTERS[provider]`.
+- `/api/discovery/poll` repurposed: returns `polledAt = max(WatchlistCompany.lastPolled)` + live `DiscoveredPosting.count` + `newPostings: 0`. No on-demand trigger (cron in `/jobs/poll.ts` is the only poller).
+- AI shape-failure responses: status `502 → 422` (`ai_invalid_response`). Frontend renders a "regenerate" affordance distinct from gateway failures.
+- `middleware.ts`: appended `/api/webhooks/clerk` to `isPublicRoute`. Foundation-owned file; coordinated via PR description.
+- `.env.example`: added `CLERK_WEBHOOK_SIGNING_SECRET`.
+- `vitest.config.ts`: added `setupFiles: ['./tests/api/_setup.ts']` so the Clerk + Prisma vi.mock factories apply across the api suite. Other suites (security/ai/ats) do not import either module so the mocks are inert there.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` and `/lib/mock-api.ts` untouched.
+
+### Coordination handoffs
+- **AI Integration Day-3**: when `SkillsIngestRawSchema` gains `warnings: string[]`, surface those in the `/api/skills/ingest` response. Today the handler returns `warnings: []` with a TODO.
+- **Foundation**: `middleware.ts` `isPublicRoute` matcher gained `/api/webhooks/clerk`. Noted in the PR description.
+
+### Carried over
+- Real-DB integration tests (the webhook + JIT User flow against a Postgres test DB) deferred to QA Day 4 once Neon credentials land.
+## [agent/external-adapter/d3] — 2026-05-16
+
+### Added
+- `lib/ats/errors.ts` — `AtsProviderError` class carrying `provider`, `slug`, `status`, `attempts`, plus `isAtsProviderError` type guard. The poller catches it specifically and projects it into a structured `errors[]` entry per row.
+- `lib/ats/_http.ts` — `fetchWithRetry` helper enforcing the Day-3 retry policy: 5xx and network errors retry once after 5 s; 429 retries once respecting `Retry-After` (else 30 s default); 4xx other than 429 fails immediately. Sleep is overrideable via `__setSleepImplForTests` so the unit suite never waits the real back-off window.
+- `jobs/poll.ts` — exports `pollOne` (used by the integration test), `runPollSweep` (shared sweep body), `ATS_POLL_REQUESTED_EVENT`, and a second Inngest function `atsPollRequestedFunction` triggered by `ats/poll.requested` events for on-demand per-user sweeps. Same `ATS_POLLER=disabled` kill-switch honored.
+- `tests/ats/_http.test.ts` — 8 tests covering every branch of the retry policy.
+- `tests/ats/{greenhouse,lever,ashby}.test.ts` — per-adapter retry-path coverage (4xx immediate fail; 5xx retried then thrown) on top of Day-2 normalize/validateSlug suites. Total ATS tests: 43.
+- `tests/ats/integration/poll.integration.test.ts` — Neon-backed integration test. Seeds three `WatchlistCompany` rows under a fixed `TEST_OWNER_ID`, runs `pollOne` per row with the 2 s pacing gap, asserts inserts > 0, `lastPolled` set, then re-runs and asserts second sweep inserts = 0 (dedup). Tears everything down in `afterAll`. Falls back from `DATABASE_URL_TEST` to `DATABASE_URL` with a printed warning.
+- `.github/workflows/ats-integration.yml` — separate CI workflow runs `pnpm test:ats:integration` on push to `main` or `agent/external-adapter/**`, gated on `DATABASE_URL_TEST` secret (no-ops cleanly when absent).
+- `contracts/proposals/2026-05-16-external-adapter-ats-poll-event.md` — `[PENDING REVIEW]` proposal to land `ATS_POLL_REQUESTED_EVENT` + `AtsPollRequestedDataSchema` in `/contracts/ats.ts`.
+- `contracts/proposals/2026-05-16-external-adapter-workday-deferred.md` — `[PENDING REVIEW]` proposal confirming the Workday adapter stays as the throwing stub until v1.1. Documents what the Day-3 spike found.
+
+### Changed
+- `lib/ats/greenhouse.ts`, `lib/ats/lever.ts`, `lib/ats/ashby.ts` — `fetchPostings` routes through `fetchWithRetry`; all non-2xx surfaces as `AtsProviderError` with provider/slug context. `validateSlug` keeps raw fetch for its distinct 404 → "board not found" UX semantics.
+- `lib/ats/registry.ts` — `triggerPoll(ownerId)` flipped from no-op stub to `inngest.send({ name: 'ats/poll.requested', data: { ownerId } })`. Response shape preserved (`{ newPostings: 0, totalPostings: 0, polledAt }`) since the real sweep is asynchronous; Backend Core's route already counts the live total from DB. `getAdapter` and `ATS_ADAPTERS` unchanged.
+- `.env.example` — added `DATABASE_URL_TEST` with a comment pointing to a dedicated Neon test branch.
+- `ARCHITECTURE.md` — added two decisions: "ATS adapter retry policy" and "`DATABASE_URL_TEST` convention". Documents the cleanup query for the seeded `TEST_OWNER_ID` rows.
+
+### Contract notes
+- Two `[PENDING REVIEW]` proposals filed (see Added). External Adapter respects `/contracts/*.ts` immutability — both describe additions the Architect lands on accept.
+
+### Cross-stream coordination for Frontend
+- `/lib/mock-api.ts` `discoverySeed` still references kickoff-era slugs (`retool`, `linear`, `vercel`, `figma`, `airtable`). Frontend Agent should update its seed to match the Day-2 captured-fixture slugs: `stripe`, `airbnb`, `anthropic` (Greenhouse), `mistral`, `spotify` (Lever), `linear`-on-Ashby, `notion` (Ashby). Noted on the Day-3 PR.
+
+### Carried over
+- Architect to mark both proposals `[DECIDED: ...]`. On accept of the event-name proposal, the constants in `jobs/poll.ts` move to `/contracts/ats.ts` and the local exports are removed.
+- The Neon integration test path is wired but not run from this branch (no local Neon URL); CI workflow runs it on push once `DATABASE_URL_TEST` is set as a repo secret.
+## [agent/ai-integration/d3] — 2026-05-16
+
+### Added
+- `tests/ai/prompt-regression.test.ts` — 42 tests across an edge-case input corpus (very short JD, very long resume, mixed scripts, special-character names, prompt-injection attempts). Each case asserts (1) the mock returns shape-valid output through the workflow's RawSchema and (2) the real workflow's user-message builder wraps every user-supplied field in `<UNTRUSTED_INPUT>` so the SECURITY_PREAMBLE defense survives pathological inputs.
+- Cache hit/miss/set counters in `lib/ai/cache.ts` with `getCacheStats()` / `resetCacheStats()` exports. Counters are content-free (hashes only, never prompts or responses) and drive TTL tuning post-launch.
+- `tests/ai/fixtures/live/<workflow>.json` — 7/7 golden fixtures captured via `pnpm test:ai:live` against `claude-sonnet-4-6` (and `claude-opus-4-7` for `skillsIngest` per `MODEL_INGEST_FALLBACK`). All workflows passed validation on first attempt. Total run ~129s; dossier accounts for ~69s due to web_search.
+- Output-format hint appended to every `buildXUser`. WHY: the first live-smoke run revealed sonnet wandered on alignment field names — returned `{id, label}` per requirement instead of the schema's `{requirement, strength, type, evidence, recommendation}`. SYSTEM prompts in `/contracts/ai.ts` are Architect-only; the workflow-owned user message is the right place to pin the exact JSON shape. After the hint landed, all seven workflows passed first-try.
+- `contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md` — request to add a 20-entry `warnings: z.array(z.string()).max(20).default([])` field on `IngestRawSchema` so the model can surface parsing-time issues (ambiguous dates, collapsed duplicates) into the response shape Backend Core already exposes.
+
+### Changed
+- `lib/ai/workflows/dossier.ts` — replaced the `as unknown as Anthropic.Messages.Tool` cast with a locally-declared `WebSearchTool20250305` interface that mirrors the public Anthropic docs. `lib/ai/invoke.ts` now exports a `ToolParam` union (`Messages.Tool | { type; name; ... }`) and casts once at the SDK call site, so workflow code is type-clean.
+- `lib/ai/smoke.ts` — every successful workflow call writes a golden fixture to `tests/ai/fixtures/live/<workflow>.json`; prints cache stats on completion.
+
+### Contract notes
+- Filed `contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md` ([PENDING REVIEW]). Knock-on changes (mock fixture, SYSTEM prompt, test update) land in a follow-up PR once approved.
+
+### Carried over
+- `lib/ai/index.ts` Backend-Core Day-2 compatibility shim (`runAlignment` / `runResume` / ... / `MOCK_INGEST_WARNINGS`) left untouched per the Day-3 kickoff; Backend Core's Day-3 PR removes it.
+
+## [agent/security/d3] — 2026-05-16
+
+### Added
+- `tests/security/middleware-composition.test.ts` — exercises `applySecurityMiddleware` across the request shapes the wired-up `middleware.ts` actually sees: API GET (read tier), API GET (ai tier), authenticated page navigation, anonymous public route, exhaustion-to-429 on both tiers with security headers attached, per-user bucket isolation, route-classifier mapping with `it.each` over the four AI routes and four read routes.
+- `tests/security/rate-limit.integration.test.ts` — opt-in real-Upstash test gated on `UPSTASH_REDIS_REST_URL_TEST` + `UPSTASH_REDIS_REST_TOKEN_TEST`. Hits the real `@upstash/ratelimit` sliding-window limiter 60/61 times with a per-run unique identifier (`pid + Date.now()`), prefixed `tl:rl-test:` so it cannot poison prod data. Skips cleanly when env vars are absent; `pnpm test:security:integration` is the explicit opt-in.
+- `pnpm test:security:integration` script. `pnpm test:security` excludes `*.integration.test.ts` so the unit-test gate stays green without external infrastructure.
+- `.env.example`: documented `UPSTASH_REDIS_REST_URL_TEST` / `UPSTASH_REDIS_REST_TOKEN_TEST` conventions.
+- `/contracts/proposals/2026-05-16-security-csp-nonce.md` — formal deferral of the CSP nonce migration with the actual trade-off (forces dynamic rendering on every page, breaks ISR / PPR / CDN cache) instead of the Day-2 misstatement that the API was unstable.
+
+### Changed
+- `middleware.ts` — wired `applySecurityMiddleware` from `@/middleware.security` into the `clerkMiddleware` callback (after `auth.protect()`, before return). Added `/api/webhooks/clerk` to `isPublicRoute` so Clerk's signed webhook POSTs reach Backend Core's handler when it ships (Svix signature is the real defense). Edit coordinated via PR description; Foundation owns the file; Day-1 TODO comment resolved.
+- `docs/threat-model.md` — Boundary 1 (BYOK) gains a row for the composed middleware now being live; Residual-risk paragraph rewritten with the correct CSP-nonce trade-off and a pointer to the formal proposal. New Boundary 4 (Authentication) covers the Clerk session + webhook signature surface that Day-3 wire-up newly exposes. Open items reordered: middleware composition removed (done); CSP nonce reframed; webhook handler tracked as Backend Core's pending item.
+
+### Contract notes
+- `/contracts/proposals/2026-05-16-security-csp-nonce.md` filed `[PENDING REVIEW]`. No `/contracts/*.ts` modified.
+
+### Cross-stream reviews
+- Zero Day-3 PRs from other agents were open as of this PR opening (`gh pr list --state open` returned `[]`). I will adversarially-review each Backend Core / AI Integration / External Adapter / Frontend Day-3 PR at PR-open time per FLOOR.md "two-agent review for high-risk surfaces"; reviews are posted via `gh pr comment` and do not need commits on this branch.
+
+### Carried over
+- Backend Core's `/api/webhooks/clerk` handler: `middleware.ts` is already permissive for the path; Security Agent reviews the Svix signature verification + JIT User row provisioning when the handler ships.
+- `security:`-labeled GitHub issues to be filed against any other-agent PR that fails review.
+- CSP nonce migration: revisit per the filed proposal once Frontend + Architect sign off on the rendering-mode cost.
 
 ## [agent/backend-core/d2] — 2026-05-16
 

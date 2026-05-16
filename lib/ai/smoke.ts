@@ -6,10 +6,18 @@
 // failure so CI / a developer pre-merge run can see exactly which workflow
 // broke.
 //
+// Each successful call writes a golden fixture to
+// `tests/ai/fixtures/live/<workflow>.json` so future prompt edits have a
+// real-world comparison point. Fixtures are git-tracked; rerunning the
+// smoke overwrites them, and a fixture diff in CR signals that the
+// SYSTEM-prompt change altered model output.
+//
 // This file is the one and only place in the AI namespace that reads the
 // key from process.env — production paths take the key as a function
 // argument (forwarded from the BYOK request header).
 
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import {
   alignment,
   coverLetter,
@@ -19,6 +27,7 @@ import {
   resume,
   skillsIngest,
 } from './index';
+import { getCacheStats, resetCacheStats } from './cache';
 import type {
   AlignmentInput,
   CoverLetterInput,
@@ -29,6 +38,14 @@ import type {
   ResumeInput,
 } from '@/contracts/ai';
 import type { Application, SkillsDB } from '@/contracts/models';
+
+const FIXTURES_DIR = resolve(process.cwd(), 'tests/ai/fixtures/live');
+
+function writeFixture(label: string, value: unknown): void {
+  const path = resolve(FIXTURES_DIR, `${label}.json`);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(value, null, 2) + '\n', 'utf8');
+}
 
 function fakeSkillsDB(): SkillsDB {
   return {
@@ -103,6 +120,7 @@ async function runOne<T>(label: string, fn: () => Promise<T>): Promise<void> {
   try {
     const out = await fn();
     const ms = Date.now() - t0;
+    writeFixture(label, out);
     const preview =
       typeof out === 'object' && out !== null
         ? JSON.stringify(out).slice(0, 120)
@@ -130,6 +148,7 @@ async function main(): Promise<void> {
   const application = fakeApplication();
   const opts = { apiKey };
 
+  resetCacheStats();
   process.stdout.write('smoke: running one call per workflow...\n');
 
   const alignmentInput: AlignmentInput = {
@@ -163,7 +182,11 @@ async function main(): Promise<void> {
   };
   await runOne('skillsIngest', () => skillsIngest(ingestInput, opts));
 
-  process.stdout.write('smoke: all workflows succeeded.\n');
+  const stats = getCacheStats();
+  process.stdout.write(
+    `smoke: all workflows succeeded. cache stats — hits:${stats.hits} misses:${stats.misses} sets:${stats.sets}\n`,
+  );
+  process.stdout.write(`smoke: golden fixtures written to ${FIXTURES_DIR}\n`);
 }
 
 main().catch((err) => {

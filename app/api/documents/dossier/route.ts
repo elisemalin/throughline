@@ -1,7 +1,7 @@
 // POST /api/documents/dossier
 //
 // Generates a research dossier for an Application's company. Uses web search
-// in the live AI workflow; the Day-2 mock returns a structured placeholder.
+// in the live AI workflow; the mock returns a structured placeholder.
 
 import { NextResponse } from 'next/server';
 import {
@@ -9,9 +9,10 @@ import {
   DossierRequestSchema,
 } from '@/contracts/api';
 import type { Application } from '@/contracts/models';
-import { runDossier } from '@/lib/ai';
+import { dossier } from '@/lib/ai';
 import { prisma } from '@/lib/db/prisma';
 import { projectApplication } from '@/lib/db/serialize';
+import { requireAnthropicKey } from '@/lib/server/anthropic-key';
 import { requireUserId } from '@/lib/server/auth';
 import { fromZodError, jsonError, readJson } from '@/lib/server/response';
 
@@ -19,6 +20,10 @@ export async function POST(req: Request) {
   const gate = await requireUserId();
   if (gate instanceof Response) return gate;
   const userId = gate;
+
+  const keyGate = requireAnthropicKey(req);
+  if (keyGate instanceof Response) return keyGate;
+  const apiKey = keyGate;
 
   const body = await readJson(req);
   if (body instanceof Response) return body;
@@ -33,7 +38,7 @@ export async function POST(req: Request) {
   }
   const application = projectApplication(appRow) as Application;
 
-  const raw = await runDossier({ application });
+  const raw = await dossier({ application }, { apiKey });
 
   const title = `Dossier for ${application.company || 'company'}`;
   const created = await prisma.document.create({

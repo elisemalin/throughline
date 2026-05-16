@@ -42,16 +42,35 @@ describe('POST /api/discovery/poll', () => {
   it('returns a contract-shape DiscoveryPollResponse', async () => {
     signedIn();
     mPrisma.discoveredPosting.count.mockResolvedValueOnce(0);
+    mPrisma.watchlistCompany.aggregate.mockResolvedValueOnce({
+      _count: { _all: 0 },
+      _min: { lastPolled: null },
+      _max: { lastPolled: new Date('2026-05-15T12:00:00Z') },
+    } as never);
     const res = await POLL();
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual(
       expect.objectContaining({
-        newPostings: expect.any(Number),
+        newPostings: 0,
         totalPostings: expect.any(Number),
         polledAt: expect.any(String),
       }),
     );
+  });
+
+  it('falls back to current time when no watchlist row has been polled', async () => {
+    signedIn();
+    mPrisma.discoveredPosting.count.mockResolvedValueOnce(0);
+    mPrisma.watchlistCompany.aggregate.mockResolvedValueOnce({
+      _count: { _all: 0 },
+      _min: { lastPolled: null },
+      _max: { lastPolled: null },
+    } as never);
+    const res = await POLL();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.polledAt).toBe('string');
   });
 });
 
