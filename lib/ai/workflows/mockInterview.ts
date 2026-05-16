@@ -14,6 +14,7 @@ import {
   type MockInterviewRawOutput,
 } from '@/contracts/ai';
 import { createClient, extractText } from '../client';
+import { recordUsage } from '../cost';
 import { withValidationRetry } from '../retry';
 import type { CallOptions } from '../types';
 
@@ -82,6 +83,7 @@ export async function runMockInterview(
       },
       opts.signal ? { signal: opts.signal } : undefined,
     );
+    recordUsage('mockInterview', model, response.usage);
     return tryParseJson(extractText(response));
   };
   return withValidationRetry('mockInterview', MockInterviewRawSchema, callOnce);

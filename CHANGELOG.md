@@ -2,6 +2,32 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/ai-integration/d4] — 2026-05-16
+
+### Added
+- `lib/ai/cost.ts` — per-`(workflow, model)` token + USD instrumentation. `recordUsage()` is called from `invoke.ts` and `mockInterview.ts` after every SDK round-trip (including retry attempts, so the bill reflects every real call). `getCostStats()` returns a snapshot with totals, per-key aggregates, and call counts; `resetCostStats()` zeros the records. Pricing table is in-source, USD-per-million-tokens, with sonnet-4-6, opus-4-7, haiku-4-5 entries. Unknown models contribute `$0` rather than throw.
+- `DEFAULT_WEB_SEARCH_MAX_USES = 5` + `DossierOpts.webSearchMaxUses?: number` — Backend Core can lower the per-call web_search budget for cost-sensitive callers without redeploying.
+- `tests/ai/cost.test.ts` (8 tests) — pricing-table arithmetic, aggregation, unknown-model fallback, missing-usage default, retry records both attempts.
+- `tests/ai/cache-eviction.test.ts` (5 tests) — TTL contract (CACHE_TTL_SECONDS forwarding, custom-TTL override, sanity 24h), and a simulation of post-eviction behavior using a clearable backing store: a previously-cached entry returns null after the store empties and the next workflow call hits the SDK afresh. Opt-in real-Upstash TTL test is deferred; documented inline.
+- `tests/ai/ambiguous-ingest.test.ts` (6 tests) — drives `runSkillsIngest` against a deliberate-ambiguity corpus (missing end date, duplicate skills, quarter-format dates, too-many-jobs) and asserts the workflow surfaces the `warnings` field unchanged through the Zod parse boundary. Schema cap (20 entries) explicitly tested.
+- `tests/ai/dossier.test.ts` — two new tests pin the default web_search budget and the override path.
+- Smoke script (`lib/ai/smoke.ts`):
+  - Resets and prints `cost.ts` stats per workflow at the end of each run; writes a `_cost-report.json` fixture alongside the per-workflow JSON.
+  - New `mockInterview-calibration-10turns` block drives a 10-user-turn transcript so the live `done` transition can be observed against the mock's threshold.
+  - New `skillsIngest-ambiguous` block packs four parse ambiguities into one resume so the captured fixture shows what the live model writes into `warnings`.
+
+### Changed
+- `lib/ai/workflows/skillsIngest.ts` — `INGEST_OUTPUT_HINT` extended with the `warnings` field shape and one-sentence examples (mirrors the now-merged `INGEST_SYSTEM` addition).
+- `tests/ai/skillsIngest.test.ts` — minimal valid fixture gains `warnings: []`; new test asserts the mock returns a non-empty warnings array.
+- `lib/ai/workflows/dossier.ts` — `WEB_SEARCH_TOOL` constant replaced with a `webSearchTool(maxUses)` factory; `runDossier` and `dossier` accept the new opt.
+
+### Contract notes
+- None. `/contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md` already accepted on `main`; no new proposals filed.
+
+### Carried over
+- **Live smoke not re-run in this PR.** The auto-mode classifier blocked an inline `ANTHROPIC_API_KEY=…` invocation citing the absence of fresh-session consent (the prior key paste was in the Day-3 session). Smoke harness, calibration block, ambiguous-ingest block, and `_cost-report.json` fixture writer are all wired and ready; re-running `pnpm test:ai:live` with a key produces the new fixtures + cost report.
+- `mockInterview-calibration-10turns` fixture cannot be captured until the live smoke runs. Once captured, if `done` is not `true` at turn 10 we either lower the SYSTEM threshold (Architect proposal) or relax the mock fixture's `>= 10` rule.
+
 ## [agent/frontend/d3] — 2026-05-16
 
 ### Added
