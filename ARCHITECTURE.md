@@ -32,9 +32,11 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 | `next` 15 | Foundation Agent installs on Day 1. Justification for choosing Next over Vite-only: App Router enables the `/app/api/*` routes and middleware that Backend Core and Security Agent rely on, and Vercel deployment is one-step. |
 | `@prisma/client` 5 + `prisma` 5 | Foundation Agent installs on Day 1. Maps `/contracts/models.ts` to Postgres. JSON columns are used for nested SkillsDB shapes per the Decision below. |
 | `@clerk/nextjs` | Foundation Agent installs on Day 1. Justification for choosing Clerk over Firebase Auth: BYOK Anthropic flow is browser-side, server only validates session, and Clerk's middleware integrates with Next.js App Router. |
-| `@anthropic-ai/sdk` | AI Integration Agent installs when starting Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
+| `@anthropic-ai/sdk` | AI Integration Agent installs on Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
 | `inngest` | External Adapter Agent installs when starting Day 3. Daily poller for ATS providers. |
-| `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs when starting Day 3. AI prompt-hash cache + sliding-window rate limit. |
+| `@upstash/redis` | AI Integration Agent installs on Day 2 (ahead of the originally-planned Day 3 schedule) so the prompt-hash cache (`/lib/ai/cache.ts`) ships with the namespace. `@upstash/ratelimit` is still Security Agent's Day 3 add. |
+| `vitest` (dev) | AI Integration Agent installs on Day 2 for `/tests/ai/*` unit tests against mocked SDK responses. Playwright remains the smoke harness (`/tests/smoke/*`); Vitest covers the per-workflow validation and retry/cache assertions that don't need a browser. |
+| `tsx` (dev) | AI Integration Agent installs on Day 2 to run `lib/ai/smoke.ts` (the one-call-per-workflow live smoke) as a plain Node script under `pnpm test:ai:live`. No bundler, no Next runtime needed — `tsx` executes the TS file directly. |
 
 Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.
 
