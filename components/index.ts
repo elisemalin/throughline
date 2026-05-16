@@ -14,6 +14,7 @@ export { Markdown } from './Markdown';
 export type { MarkdownProps } from './Markdown';
 export { Modal } from './Modal';
 export type { ModalProps } from './Modal';
+export { PassphraseStrength } from './PassphraseStrength';
 export { Pill, PILL_TONES } from './Pill';
 export type { PillProps, PillTone } from './Pill';
 export { SectionLabel } from './SectionLabel';
