@@ -4,33 +4,29 @@
 // under /app/api/*; Backend Core implements the handler, Frontend Agent
 // imports the types via /lib/mock-api during the parallel sprint and via
 // the real fetch layer after integration.
-//
-// Routes carry an explicit HTTP method so collection endpoints can share a
-// path (e.g. GET /api/applications + POST /api/applications) without
-// collapsing in a path-keyed record.
-//
-// Every request body is exported as a Zod validator AND a derived TS type.
-// Handlers use the validator at the boundary; callers use the type. Do not
-// redefine these shapes elsewhere.
 
 import { z } from 'zod';
 import {
-  AlignmentAnalysisSchema,
   AlignmentAnalysis,
+  AlignmentAnalysisSchema,
   ApplicationSchema,
   ApplicationStatusSchema,
   ApplicationEventSchema,
   ATS_PROVIDERS,
   AtsProviderSchema,
+  boundedOptionalString,
   ContactSchema,
+  DiscoveredPostingSchema,
   DiscoveryStatusSchema,
   DocumentKindSchema,
   DocumentSchema,
   JobSchema,
+  optionalString,
   ProjectSchema,
   SkillsDBSchema,
+  stripEmpty,
   WatchlistCompanySchema,
-  DiscoveredPostingSchema,
+  atsSlugSchema,
 } from './models';
 import type {
   Application,
@@ -44,10 +40,6 @@ import type {
 
 // ---------------------------------------------------------------------------
 // Route registry
-//
-// Shape: { method, path }. Backend Core mounts handlers off this registry.
-// Frontend uses the path for fetch construction post-integration; pre-
-// integration, callers reference the type-bound mock-api function instead.
 // ---------------------------------------------------------------------------
 
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -70,6 +62,7 @@ export const API_ROUTES = {
   applicationUpdate:    { method: 'PATCH',  path: '/api/applications/:id' },
   applicationDelete:    { method: 'DELETE', path: '/api/applications/:id' },
   applicationEventList: { method: 'GET',    path: '/api/applications/:id/events' },
+  applicationAlignment: { method: 'POST',   path: '/api/applications/:id/alignment' },
 
   // Document CRUD
   documentList:         { method: 'GET',    path: '/api/documents' },
@@ -97,17 +90,29 @@ export type ApiRoute = keyof typeof API_ROUTES;
 export const AlignmentRequestSchema = z
   .object({
     jobDescription: z.string().min(1).max(50_000),
-    // skillsDB is resolved server-side from the authenticated session; the
-    // client does not send it. Mock implementations resolve it from a shared
-    // fixture so the call signature is identical to the live route.
   })
   .strict();
 export type AlignmentRequest = z.infer<typeof AlignmentRequestSchema>;
 
-// AlignmentResponse is the same shape as the persisted AlignmentAnalysis.
-// Single source of truth: models.ts.
 export const AlignmentResponseSchema = AlignmentAnalysisSchema;
 export type AlignmentResponse = AlignmentAnalysis;
+
+// ---------------------------------------------------------------------------
+// POST /api/applications/:id/alignment
+//
+// Server attaches a freshly-computed AlignmentAnalysis to an existing
+// Application row. Used by the Discovery "draft application" flow and by
+// any client that wants to update an Application's alignment without
+// trusting client-side computation. Body is empty; jobDescription is read
+// from the Application row.
+// ---------------------------------------------------------------------------
+
+export const ApplicationAlignmentResponseSchema = z
+  .object({
+    application: ApplicationSchema,
+  })
+  .strict();
+export type ApplicationAlignmentResponse = z.infer<typeof ApplicationAlignmentResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Document generation: shared response
@@ -116,10 +121,10 @@ export type AlignmentResponse = AlignmentAnalysis;
 export const DocumentResponseSchema = z
   .object({
     kind: DocumentKindSchema,
-    title: z.string(),
-    body: z.string(),
+    title: z.string().max(500),
+    body: z.string().max(100_000),
     createdAt: z.string(),
-    applicationId: z.string().optional(),
+    applicationId: optionalString,
   })
   .strict();
 export type DocumentResponse = z.infer<typeof DocumentResponseSchema>;
@@ -130,7 +135,7 @@ export type DocumentResponse = z.infer<typeof DocumentResponseSchema>;
 
 export const ResumeRequestSchema = z
   .object({
-    applicationId: z.string().optional(),
+    applicationId: optionalString,
   })
   .strict();
 export type ResumeRequest = z.infer<typeof ResumeRequestSchema>;
@@ -141,8 +146,8 @@ export type ResumeRequest = z.infer<typeof ResumeRequestSchema>;
 
 export const CoverLetterRequestSchema = z
   .object({
-    applicationId: z.string(),
-    customNotes: z.string().max(2_000).optional(),
+    applicationId: z.string().min(1),
+    customNotes: boundedOptionalString(2_000),
   })
   .strict();
 export type CoverLetterRequest = z.infer<typeof CoverLetterRequestSchema>;
@@ -153,7 +158,7 @@ export type CoverLetterRequest = z.infer<typeof CoverLetterRequestSchema>;
 
 export const NinetyDayRequestSchema = z
   .object({
-    applicationId: z.string(),
+    applicationId: z.string().min(1),
   })
   .strict();
 export type NinetyDayRequest = z.infer<typeof NinetyDayRequestSchema>;
@@ -164,31 +169,26 @@ export type NinetyDayRequest = z.infer<typeof NinetyDayRequestSchema>;
 
 export const DossierRequestSchema = z
   .object({
-    applicationId: z.string(),
+    applicationId: z.string().min(1),
   })
   .strict();
 export type DossierRequest = z.infer<typeof DossierRequestSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/interviews/mock
-//
-// Multi-turn. Client sends the running chat history; server returns the next
-// interviewer turn. An empty transcript is the start-of-interview signal —
-// server returns an opening question. After ~10 turns the server may set
-// `done: true` to signal wrap-up.
 // ---------------------------------------------------------------------------
 
 export const MockInterviewTurnSchema = z
   .object({
     role: z.enum(['interviewer', 'user']),
-    text: z.string(),
+    text: z.string().min(1).max(2_000),
   })
   .strict();
 export type MockInterviewTurn = z.infer<typeof MockInterviewTurnSchema>;
 
 export const MockInterviewRequestSchema = z
   .object({
-    applicationId: z.string(),
+    applicationId: z.string().min(1),
     transcript: z.array(MockInterviewTurnSchema).max(200),
   })
   .strict();
@@ -209,16 +209,24 @@ export type MockInterviewResponse = z.infer<typeof MockInterviewResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/skills/ingest
-//
-// Resume / LinkedIn text is untrusted user input. AI Integration wraps it in
-// <UNTRUSTED_INPUT> tags before sending to Claude (see /contracts/ai.ts
-// INGEST_SYSTEM). The schema here only enforces length bounds.
 // ---------------------------------------------------------------------------
+
+// Normalize: strip null bytes, normalize CRLF. Applied at boundary so the
+// assembled Claude prompt sees clean UTF-8.
+const normalizeText = (s: string) =>
+  s.replace(/\u0000/g, '').replace(/\r\n/g, '\n');
 
 export const SkillsIngestRequestSchema = z
   .object({
-    resumeText: z.string().min(1).max(50_000),
-    linkedinText: z.string().max(50_000).optional(),
+    resumeText: z
+      .string()
+      .min(1)
+      .max(50_000)
+      .transform(normalizeText),
+    linkedinText: z.preprocess(
+      stripEmpty,
+      z.string().max(50_000).transform(normalizeText).optional(),
+    ),
   })
   .strict();
 export type SkillsIngestRequest = z.infer<typeof SkillsIngestRequestSchema>;
@@ -230,24 +238,25 @@ export type SkillsIngestResponse = {
 
 // ---------------------------------------------------------------------------
 // Application CRUD
+//
+// ApplicationCreateSchema does NOT accept alignmentAnalysis from the client.
+// The trust model: client-computed alignment cannot be persisted at create
+// time because the client can lie about scores. To attach alignment to a
+// new application, the flow is:
+//   1. POST /api/applications  (returns Application with no analysis)
+//   2. POST /api/applications/:id/alignment  (server computes and writes)
+// Or, in the Discovery → Draft flow, Backend Core bridges DiscoveredPosting.
+// alignmentScore server-side without trusting the client.
 // ---------------------------------------------------------------------------
 
-// ApplicationCreate is the persisted Application minus server-set fields.
-// `.strict()` rejects unknown keys so a malicious client cannot inject
-// ownerId/id at create time.
 export const ApplicationCreateSchema = ApplicationSchema.omit({
   id: true,
   ownerId: true,
   alignmentAnalysis: true,
+  alignmentScore: true,
   createdAt: true,
   updatedAt: true,
-})
-  .extend({
-    // alignmentAnalysis can be supplied at create time if the client ran
-    // /api/alignment first and wants to snapshot it onto the row.
-    alignmentAnalysis: AlignmentAnalysisSchema.optional(),
-  })
-  .strict();
+}).strict();
 export type ApplicationCreate = z.infer<typeof ApplicationCreateSchema>;
 
 export const ApplicationUpdateSchema = ApplicationCreateSchema.partial().strict();
@@ -265,10 +274,6 @@ export type DocumentListResponse = { documents: Document[] };
 
 // ---------------------------------------------------------------------------
 // Skills read/update
-//
-// SkillsUpdate accepts a partial SkillsDB, validated nested. The nested
-// schemas in models.ts are `.strict()` so a client cannot smuggle extra
-// fields into the JSON column.
 // ---------------------------------------------------------------------------
 
 export type SkillsReadResponse = { skillsDB: SkillsDB | null };
@@ -286,9 +291,9 @@ export type SkillsUpdate = z.infer<typeof SkillsUpdateSchema>;
 
 export const WatchlistAddSchema = z
   .object({
-    company: z.string().min(1),
+    company: z.string().min(1).max(200),
     atsProvider: AtsProviderSchema,
-    atsSlug: z.string().min(1),
+    atsSlug: atsSlugSchema,
   })
   .strict();
 export type WatchlistAddRequest = z.infer<typeof WatchlistAddSchema>;
@@ -308,24 +313,53 @@ export type DiscoveryPollResponse = {
   polledAt: string;
 };
 
-// Discovery transitions can attach the resulting applicationId when status
-// becomes 'drafted' so the Discovery view can deep-link to the Application.
-export const DiscoveryUpdateSchema = z
-  .object({
-    status: DiscoveryStatusSchema,
-    applicationId: z.string().optional(),
-  })
-  .strict();
+// DiscoveryUpdateSchema is discriminated on status: 'drafted' transitions
+// MUST attach an applicationId so the Discovery view can deep-link to the
+// resulting Application. Other transitions MUST NOT carry an applicationId.
+export const DiscoveryUpdateSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('drafted'),
+      applicationId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.enum(['new', 'viewed', 'dismissed']),
+    })
+    .strict(),
+]);
 export type DiscoveryUpdateRequest = z.infer<typeof DiscoveryUpdateSchema>;
 
 // ---------------------------------------------------------------------------
-// Re-export the nested schemas so consumers can validate sub-payloads
-// without reaching into models.ts.
+// AI workflow → API response wrapper helpers
+//
+// MockInterviewRawSchema (in /contracts/ai.ts) returns `next: string`. The
+// API response wraps it as `{next: {role:'interviewer', text}, done}`.
+// Backend Core handlers MUST use this helper rather than constructing the
+// response shape themselves.
+// ---------------------------------------------------------------------------
+
+export function wrapMockInterviewResponse(
+  raw: { next: string; done: boolean },
+): MockInterviewResponse {
+  return {
+    next: { role: 'interviewer', text: raw.next },
+    done: raw.done,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Re-export nested schemas so consumers can validate sub-payloads without
+// reaching into models.ts.
 // ---------------------------------------------------------------------------
 
 export {
-  ContactSchema,
-  ProjectSchema,
-  JobSchema,
   AlignmentAnalysisSchema,
+  ApplicationEventSchema,
+  ContactSchema,
+  JobSchema,
+  ProjectSchema,
+  atsSlugSchema,
+  optionalString,
 };

@@ -129,10 +129,18 @@ fi
 # ---------------------------------------------------------------------------
 # Rule 9 — Server-never-stores list
 # ---------------------------------------------------------------------------
+## Coverage: console.(log|info|warn|error|debug|trace), prisma.X.(create|
+## update|upsert|createMany|updateMany|executeRaw|delete), common loggers
+## and analytics sinks, Inngest egress. Line-based (cannot detect multi-line
+## writes); paired with Security Agent's PR-level review.
+##
+## Token list is narrow on purpose: only high-signal names that should never
+## appear at a sink. See SERVER_NEVER_STORES_GREP_TOKENS in
+## /contracts/storage.ts for the canonical list.
 grep_within \
-  '^(app/api/|lib/server/|lib/db/|lib/ai/)' \
-  "(console\.(log|info|error)\(.*\b(apiKey|anthropicKey|prompt|completion|resumeText|linkedinText|passphrase|kdfKey|apiKeyIv|apiKeySalt)\b|prisma\..*\.create\(.*\b(apiKey|anthropicKey|prompt|completion|resumeText|linkedinText|passphrase|kdfKey|apiKeyIv|apiKeySalt)\b)" \
-  "Server code appears to log or persist key/prompt/completion/passphrase material (review SERVER_NEVER_STORES_GREP_TOKENS in /contracts/storage.ts)"
+  '^(app/api/|lib/server/|lib/db/|lib/ai/|jobs/)' \
+  "(console\.(log|info|warn|error|debug|trace)|prisma\.\w+\.(create|update|upsert|createMany|updateMany|executeRaw|delete)|(pino|winston|logger|log|Sentry|posthog|analytics|datadog)\.|inngest\.send|step\.run|step\.sendEvent)\(.*\b(anthropicKey|apiKeyPlaintext|apiKeyCiphertext|resumeText|linkedinText|passphrase|kdfKey|apiKeyIv|apiKeySalt)\b" \
+  "Server code appears to log or persist sensitive material at a write/egress sink (review SERVER_NEVER_STORES_GREP_TOKENS in /contracts/storage.ts; coarse first-line check, Security Agent does PR-level review)"
 
 # ---------------------------------------------------------------------------
 # Rule 10 — Frontend owns /lib/mock-api.ts

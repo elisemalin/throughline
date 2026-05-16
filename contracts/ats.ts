@@ -15,11 +15,15 @@ import type { AtsProvider } from './models';
 // Provider endpoints (canonical — do not invent)
 // ---------------------------------------------------------------------------
 
+// Slugs are encodeURIComponent'd as defense-in-depth; the upstream
+// atsSlugSchema (models.ts) already restricts to [a-zA-Z0-9_-]{1,100}.
 export const ATS_ENDPOINTS = {
   greenhouse: (slug: string) =>
-    `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`,
-  lever: (slug: string) => `https://api.lever.co/v0/postings/${slug}?mode=json`,
-  ashby: (slug: string) => `https://api.ashbyhq.com/posting-api/job-board/${slug}`,
+    `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(slug)}/jobs?content=true`,
+  lever: (slug: string) =>
+    `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}?mode=json`,
+  ashby: (slug: string) =>
+    `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(slug)}`,
   workday: (slug: string) => {
     // Workday is v1.1; stub only in MVP. Slug format is tenant.region.site.
     void slug;
@@ -83,16 +87,16 @@ export interface AtsAdapter<TRaw = unknown> {
 
 export const NormalizedPostingSchema = z
   .object({
-    externalId: z.string().min(1),
-    company: z.string().min(1),
+    externalId: z.string().min(1).max(200),
+    company: z.string().min(1).max(200),
     atsProvider: AtsProviderSchema,
-    role: z.string().min(1),
-    location: z.string().default(''),
+    role: z.string().min(1).max(200),
+    location: z.string().max(200).default(''),
     remote: z.boolean(),
     postedAt: z.string(),                            // ISO date
     url: z.string().url(),
-    salaryRange: z.string().optional(),
-    jobDescription: z.string().default(''),
+    salaryRange: z.string().max(200).optional(),
+    jobDescription: z.string().max(50_000).default(''),
   })
   .strict();
 

@@ -4,9 +4,7 @@
 // the Foundation Agent on Day 1; this file is the source of truth.
 //
 // Shapes lifted directly from /prototype/Throughline.jsx (seed data and form
-// state) so the prototype and contracts stay aligned. Field names match the
-// prototype field-for-field unless a deviation is documented in
-// /contracts/proposals/.
+// state) so the prototype and contracts stay aligned.
 //
 // IMPORTANT: no agent except the Architect edits this file. Changes go through
 // /contracts/proposals/<date>-<role>-<slug>.md.
@@ -58,22 +56,49 @@ export const ApplicationEventKindSchema = z.enum(APPLICATION_EVENT_KINDS);
 
 // ---------------------------------------------------------------------------
 // Shared validators
+//
+// optionalString normalizes prototype-form '' to undefined so DB and read
+// code can rely on a single truthiness check across every optional field.
 // ---------------------------------------------------------------------------
 
-// The prototype emits '' for many optional fields when the user skips them.
-// `optionalString` accepts string-or-undefined-or-empty and normalizes to
-// undefined so DB and read code can rely on a single truthiness check.
-const optionalString = z.preprocess(
-  (v) => (v === '' || v == null ? undefined : v),
-  z.string().optional(),
+// stripEmpty is exported so any future preprocess-on-empty consumer can
+// reuse the canonical primitive rather than redeclaring '' -> undefined.
+export const stripEmpty = (v: unknown): unknown =>
+  v === '' || v == null ? undefined : v;
+
+// optionalString carries a default upper bound (500 chars) so a 10MB
+// "location" or "source" payload cannot pass validation via the shared
+// primitive. Call sites that need a tighter or wider bound use
+// boundedOptionalString below.
+export const optionalString = z.preprocess(
+  stripEmpty,
+  z.string().max(500).optional(),
 );
 
-const optionalUrl = z.preprocess(
-  (v) => (v === '' || v == null ? undefined : v),
-  z.string().url().optional(),
+export const boundedOptionalString = (max: number) =>
+  z.preprocess(stripEmpty, z.string().max(max).optional());
+
+export const optionalUrl = z.preprocess(
+  stripEmpty,
+  z.string().url().max(2_000).optional(),
 );
 
-const isoDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/, 'ISO date');
+export const optionalEmail = z.preprocess(
+  stripEmpty,
+  z.string().email().max(320).optional(),     // RFC 5321 max email length
+);
+
+// ATS slugs come from user input and are interpolated into provider URLs.
+// Restrict to alphanumeric / dash / underscore so the URL is always safe
+// regardless of encoding.
+export const atsSlugSchema = z
+  .string()
+  .regex(/^[a-zA-Z0-9_-]{1,100}$/, 'ATS slug must be alphanumeric/_/-');
+
+const isoDateString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/, 'ISO date');
+
 const isoMonthString = z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM');
 
 // ---------------------------------------------------------------------------
@@ -95,61 +120,61 @@ export type User = z.infer<typeof UserSchema>;
 // ---------------------------------------------------------------------------
 // SkillsDB and its nested shapes
 //
-// The SkillsDB is the structured representation of the user's resume +
-// LinkedIn export, parsed once on intake and edited from the Skills view.
-//
 // Jobs and Projects are nested rather than relational because they are
-// always read together and never queried independently — Foundation Agent
-// translates SkillsDB to a Prisma row with a JSON column for `jobs`.
-//
-// Project IDs follow `P\d+` within a Job. Job IDs follow `J\d+` within a
-// SkillsDB. Enforced by Zod so a malicious update payload cannot inject
-// arbitrary nested rows that overflow the JSON column.
+// always read together and never queried independently. ID-format and
+// CARDINALITY are both bounded so a malicious SkillsUpdate payload cannot
+// inject arbitrary nested rows or overflow the JSON column.
 // ---------------------------------------------------------------------------
 
 export const ContactSchema = z
   .object({
-    email: z.string().email().or(z.literal('')),
-    phone: z.string().default(''),
-    location: z.string().default(''),
-    linkedin: z.string().default(''),
-    site: z.string().default(''),
+    email: optionalEmail,
+    phone: optionalString,
+    location: optionalString,
+    linkedin: optionalString,
+    site: optionalString,
   })
   .strict();
 export type Contact = z.infer<typeof ContactSchema>;
 
 export const ProjectSchema = z
   .object({
-    id: z.string().regex(/^P\d+$/, 'project id must match P\\d+'),
-    name: z.string().min(1),
-    problem: z.string(),
-    actions: z.array(z.string()).default([]),
-    result: z.string(),
-    metrics: z.record(z.string()).default({}),     // freeform key/value
-    scope: z.string().default(''),
-    skills: z.array(z.string()).default([]),
-    tools: z.array(z.string()).default([]),
-    methods: z.array(z.string()).default([]),
-    domain: z.string().default(''),
-    keywords: z.array(z.string()).default([]),
-    recency: z.number().int().min(1).max(5),
-    relevance: z.array(z.string()).default([]),
-    confidence: z.number().min(0).max(1),
+    id: z.string().regex(/^P\d{1,4}$/, 'project id must match P\\d{1,4}'),
+    name: z.string().min(1).max(200),
+    problem: z.string().max(2_000),
+    actions: z.array(z.string().max(500)).max(20).default([]),
+    result: z.string().max(2_000),
+    metrics: z
+      .record(z.string().max(100), z.string().max(200))
+      .refine((m) => Object.keys(m).length <= 20, 'metrics: max 20 entries')
+      .default({}),
+    scope: z.string().max(500).default(''),
+    skills: z.array(z.string().max(100)).max(50).default([]),
+    tools: z.array(z.string().max(100)).max(50).default([]),
+    methods: z.array(z.string().max(100)).max(50).default([]),
+    domain: z.string().max(100).default(''),
+    keywords: z.array(z.string().max(100)).max(50).default([]),
+    recency: z.number().int().min(1).max(5).default(3),
+    relevance: z.array(z.string().max(100)).max(50).default([]),
+    confidence: z.number().min(0).max(1).default(0.5),
   })
   .strict();
 export type Project = z.infer<typeof ProjectSchema>;
 
 export const JobSchema = z
   .object({
-    id: z.string().regex(/^J\d+$/, 'job id must match J\\d+'),
-    employer: z.string().min(1),
-    title: z.string().min(1),
+    id: z.string().regex(/^J\d{1,4}$/, 'job id must match J\\d{1,4}'),
+    employer: z.string().min(1).max(200),
+    title: z.string().min(1).max(200),
     startDate: isoMonthString,
-    endDate: z.string().regex(/^(\d{4}-\d{2})?$/, 'YYYY-MM or empty').default(''),
-    location: z.string().default(''),
-    industry: z.string().default(''),
-    summary: z.string().default(''),
-    projects: z.array(ProjectSchema).default([]),
+    endDate: z.preprocess(
+      stripEmpty,
+      z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM').optional(),
+    ),
+    location: z.string().max(200).default(''),
+    industry: z.string().max(200).default(''),
+    summary: z.string().max(2_000).default(''),
+    projects: z.array(ProjectSchema).max(50).default([]),
   })
   .strict();
 export type Job = z.infer<typeof JobSchema>;
@@ -157,19 +182,19 @@ export type Job = z.infer<typeof JobSchema>;
 export const SkillsDBSchema = z
   .object({
     id: z.string(),
-    ownerId: z.string(),                            // User.id
-    fullName: z.string().default(''),
-    headline: z.string().default(''),
-    positioning: z.string().default(''),
+    ownerId: z.string(),
+    fullName: z.string().max(200).default(''),
+    headline: z.string().max(300).default(''),
+    positioning: z.string().max(1_000).default(''),
     contact: ContactSchema,
-    targetRoles: z.array(z.string()).default([]),
-    awards: z.array(z.string()).default([]),
-    jobs: z.array(JobSchema).default([]),
-    coreSkills: z.array(z.string()).default([]),
-    tools: z.array(z.string()).default([]),
-    methods: z.array(z.string()).default([]),
-    domains: z.array(z.string()).default([]),
-    keywords: z.array(z.string()).default([]),
+    targetRoles: z.array(z.string().max(200)).max(20).default([]),
+    awards: z.array(z.string().max(500)).max(30).default([]),
+    jobs: z.array(JobSchema).max(20).default([]),
+    coreSkills: z.array(z.string().max(100)).max(200).default([]),
+    tools: z.array(z.string().max(100)).max(200).default([]),
+    methods: z.array(z.string().max(100)).max(200).default([]),
+    domains: z.array(z.string().max(100)).max(200).default([]),
+    keywords: z.array(z.string().max(100)).max(200).default([]),
     updatedAt: z.string(),
   })
   .strict();
@@ -178,7 +203,7 @@ export type SkillsDB = z.infer<typeof SkillsDBSchema>;
 // Story is derived from SkillsDB at read time. Not persisted.
 export const StorySchema = z
   .object({
-    id: z.string(),                                 // <jobId>-<projectId>
+    id: z.string(),
     title: z.string(),
     employer: z.string(),
     situation: z.string(),
@@ -196,17 +221,15 @@ export type Story = z.infer<typeof StorySchema>;
 //
 // Lives here because it is BOTH the persisted snapshot on Application AND the
 // API response shape for /api/alignment. Defining it once prevents drift.
-// The handoff §4.2 example shape is preserved field-for-field; the API
-// response type in /contracts/api.ts re-exports the inferred type.
 // ---------------------------------------------------------------------------
 
 export const AlignmentRequirementSchema = z
   .object({
-    requirement: z.string(),
+    requirement: z.string().max(200),
     strength: z.number().min(0).max(10),
     type: z.enum(['strong', 'partial', 'missing']),
-    evidence: z.string(),
-    recommendation: z.string(),
+    evidence: z.string().max(500),
+    recommendation: z.string().max(500),
   })
   .strict();
 export type AlignmentRequirement = z.infer<typeof AlignmentRequirementSchema>;
@@ -215,8 +238,8 @@ export const AlignmentAnalysisSchema = z
   .object({
     score: z.number().int().min(0).max(100),
     requirements: z.array(AlignmentRequirementSchema).max(30).default([]),
-    missingKeywords: z.array(z.string()).max(20).default([]),
-    recommendation: z.string(),
+    missingKeywords: z.array(z.string().max(100)).max(20).default([]),
+    recommendation: z.string().max(1_000),
   })
   .strict();
 export type AlignmentAnalysis = z.infer<typeof AlignmentAnalysisSchema>;
@@ -224,31 +247,36 @@ export type AlignmentAnalysis = z.infer<typeof AlignmentAnalysisSchema>;
 // ---------------------------------------------------------------------------
 // Application + ApplicationEvent
 //
-// One row per job a user is tracking. Status transitions go through
-// ApplicationEvent for audit; the current state lives on Application itself.
+// jobDescription and notes are bounded so a write via /api/applications
+// cannot bypass the /api/alignment 50KB cap. Same bound on both surfaces.
 //
-// `alignmentScore` is derived from `alignmentAnalysis?.score` at read time
-// for display; it is NOT a separately persisted column. Backend Core
-// computes and reads it as a getter (or a Prisma client extension).
+// alignmentAnalysis is the persisted snapshot. alignmentScore is a derived
+// read-side field (number) populated from alignmentAnalysis?.score on read.
+// Backend Core projects it into list responses so the Frontend's prototype
+// pattern (`application.alignmentScore`) continues to work.
 // ---------------------------------------------------------------------------
 
 export const ApplicationSchema = z
   .object({
     id: z.string(),
     ownerId: z.string(),
-    company: z.string().min(1),
-    role: z.string().min(1),
+    company: z.string().min(1).max(200),
+    role: z.string().min(1).max(200),
     url: optionalUrl,
-    source: optionalString,                         // 'linkedin', 'referral', etc.
+    source: optionalString,
     location: optionalString,
     remote: z.boolean().default(false),
     salaryRange: optionalString,
-    jobDescription: optionalString,
+    jobDescription: boundedOptionalString(50_000),
     status: ApplicationStatusSchema,
-    appliedDate: optionalString,                    // ISO date if present
-    followUpDate: optionalString,
-    notes: optionalString,
+    appliedDate: boundedOptionalString(50),     // ISO date string
+    followUpDate: boundedOptionalString(50),
+    notes: boundedOptionalString(10_000),
     alignmentAnalysis: AlignmentAnalysisSchema.optional(),
+    // alignmentScore: derived from alignmentAnalysis?.score. Server projects
+    // it into list responses; Frontend reads it directly. Not persisted as a
+    // separate column.
+    alignmentScore: z.number().int().min(0).max(100).optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
@@ -264,16 +292,13 @@ export const ApplicationEventSchema = z
     note: optionalString,
     fromStatus: ApplicationStatusSchema.optional(),
     toStatus: ApplicationStatusSchema.optional(),
-    documentId: optionalString,                     // for kind='document_generated'
+    documentId: optionalString,
   })
   .strict();
 export type ApplicationEvent = z.infer<typeof ApplicationEventSchema>;
 
 // ---------------------------------------------------------------------------
 // Document
-//
-// Generated artifacts (resume, cover letter, 90-day plan, dossier) keyed
-// optionally to an Application. Body is markdown.
 // ---------------------------------------------------------------------------
 
 export const DocumentSchema = z
@@ -281,9 +306,9 @@ export const DocumentSchema = z
     id: z.string(),
     ownerId: z.string(),
     kind: DocumentKindSchema,
-    title: z.string(),
-    body: z.string(),                               // markdown
-    applicationId: optionalString,                  // undefined for general/un-targeted
+    title: z.string().max(500),
+    body: z.string().max(100_000),
+    applicationId: optionalString,
     createdAt: z.string(),
   })
   .strict();
@@ -292,21 +317,21 @@ export type Document = z.infer<typeof DocumentSchema>;
 // ---------------------------------------------------------------------------
 // WatchlistCompany + DiscoveredPosting
 //
-// Discovery loop. WatchlistCompany rows drive the daily Inngest poller;
-// DiscoveredPosting rows are what the poller produces.
-//
 // applicationId on DiscoveredPosting is set when the user drafts an
-// application from a discovered posting (status: 'drafted'). Lets the
-// Discovery view deep-link to the resulting Application row.
+// application from a discovered posting (status: 'drafted'). The
+// invariant ("applicationId iff status='drafted'") is enforced at
+// request-parse time by DiscoveryUpdateSchema in /contracts/api.ts (a
+// discriminated union). It is NOT a DB-level constraint — Foundation
+// Agent does not need a CHECK clause when mirroring this to Prisma.
 // ---------------------------------------------------------------------------
 
 export const WatchlistCompanySchema = z
   .object({
     id: z.string(),
     ownerId: z.string(),
-    company: z.string().min(1),
+    company: z.string().min(1).max(200),
     atsProvider: AtsProviderSchema,
-    atsSlug: z.string().min(1),
+    atsSlug: atsSlugSchema,
     active: z.boolean(),
     lastPolled: optionalString,
     createdAt: z.string(),
@@ -319,19 +344,19 @@ export const DiscoveredPostingSchema = z
     id: z.string(),
     ownerId: z.string(),
     watchlistCompanyId: z.string(),
-    externalId: z.string(),                         // provider's posting ID (dedup key)
-    company: z.string(),
+    externalId: z.string().min(1).max(200),         // provider's posting ID (dedup key)
+    company: z.string().max(200),
     atsProvider: AtsProviderSchema,
-    role: z.string(),
-    location: z.string().default(''),
+    role: z.string().max(200),
+    location: z.string().max(200).default(''),
     remote: z.boolean(),
     postedAt: isoDateString,
     url: z.string().url(),
     salaryRange: optionalString,
-    jobDescription: z.string().default(''),
+    jobDescription: z.string().max(50_000).default(''),
     alignmentScore: z.number().int().min(0).max(100).optional(),
     status: DiscoveryStatusSchema,
-    applicationId: optionalString,                  // set when drafted into an Application
+    applicationId: optionalString,
     createdAt: z.string(),
   })
   .strict();

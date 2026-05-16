@@ -53,14 +53,21 @@ export const SERVER_NEVER_STORES = [
 ] as const;
 export type ServerNeverStoresEntry = (typeof SERVER_NEVER_STORES)[number];
 
-// The integrity script's rule 9 greps for these tokens in source files under
-// /app/api/, /lib/server/, /lib/db/, and /lib/ai/. Keep this list in sync
-// with the rule's regex.
+// The integrity script's rule 9 greps for these tokens. The token list is
+// kept narrow to maximize signal: each token here is a name that should
+// never appear at a write/log/egress sink under any normal circumstance.
+//
+// Removed in followup: `apiKey` (too generic — appears in apiKeyMeta etc.
+// which is intentionally stored), `prompt`/`completion` (substring matches
+// SYSTEM constant identifiers everywhere in /contracts/ai.ts and produces
+// systematic false positives).
+//
+// The grep is a coarse first-line check. The Security Agent's PR-level
+// review is the real defense — see `.claude-roles/security.md`.
 export const SERVER_NEVER_STORES_GREP_TOKENS = [
-  'apiKey',
   'anthropicKey',
-  'prompt',
-  'completion',
+  'apiKeyPlaintext',
+  'apiKeyCiphertext',
   'resumeText',
   'linkedinText',
   'passphrase',

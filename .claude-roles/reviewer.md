@@ -78,6 +78,8 @@ Order: BLOCK first (rare; only true non-negotiable breaches), then CRITICAL, the
 
 If no findings: `NO ISSUES FOUND` then `---` then the recommendation line.
 
+**Critical formatting rule:** Do NOT think out loud in the output. Do NOT include exploration, intermediate reasoning, file-by-file scans, partial conclusions, or "let me check X" running commentary. Your response begins with the first `[CRITICAL]`/`[MEDIUM]`/`[LOW]` line or with `NO ISSUES FOUND` — nothing before. Internal reasoning belongs in your scratch pad while you work, never in the response that gets posted as a PR comment. The /review-pr skill will reject and re-prompt if your output contains a preamble.
+
 ## Definition of done
 
 The Architect reads your output and acts on it. You don't loop, you don't second-pass, you don't approve. You produce one review per invocation.

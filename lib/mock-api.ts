@@ -96,7 +96,9 @@ const newId = (prefix: string) =>
 // the sprint. Replaced by real Backend Core handlers on Day 5.
 // ---------------------------------------------------------------------------
 
-type MockState = {
+// MockState exported so Storybook stories can construct typed patches
+// via __seedMockState.
+export type MockState = {
   skillsDB: SkillsDB | null;
   applications: Application[];
   documents: Document[];
@@ -270,11 +272,19 @@ export async function postDossier(req: DossierRequest): Promise<DocumentResponse
 // Otherwise cycle through follow-up archetypes.
 // ---------------------------------------------------------------------------
 
+// Three openers; rotate by applicationId hash so the same app pairs with the
+// same opener across re-opens, but different apps get variety.
 const MOCK_OPENERS = [
   'Thanks for making the time. To start: walk me through your most relevant experience for this role.',
   'Tell me about the most impactful project you have shipped that maps to what we are hiring for.',
   'What drew you to this opening specifically?',
 ];
+
+function openerIndexFor(applicationId: string): number {
+  let h = 0;
+  for (let i = 0; i < applicationId.length; i++) h = (h * 31 + applicationId.charCodeAt(i)) >>> 0;
+  return h % MOCK_OPENERS.length;
+}
 
 const MOCK_FOLLOWUPS = [
   'Good. Drill into the trickiest part of that. What broke and how did you handle it?',
@@ -296,7 +306,7 @@ export async function postMockInterviewTurn(
 
   if (req.transcript.length === 0) {
     return {
-      next: { role: 'interviewer', text: MOCK_OPENERS[0] },
+      next: { role: 'interviewer', text: MOCK_OPENERS[openerIndexFor(req.applicationId)] },
       done: false,
     };
   }
@@ -355,47 +365,53 @@ export async function putSkills(update: SkillsUpdate): Promise<SkillsReadRespons
 // ---------------------------------------------------------------------------
 // Applications
 //
-// stripServerKeys filters keys the client cannot set even if the TS type
-// erased and the request body carried them.
+// Mass-assignment defense: ApplicationCreateSchema and ApplicationUpdateSchema
+// are both .strict() and .omit({id, ownerId, createdAt, updatedAt}). A strict
+// parse THROWS on any of those keys in the request, so they cannot smuggle in
+// even if the TS type erased.
+//
+// alignmentScore is derived from alignmentAnalysis?.score on read; mock
+// projects it into the response so Frontend's `application.alignmentScore`
+// continues to work.
 // ---------------------------------------------------------------------------
 
-function stripServerKeys<T extends Record<string, unknown>>(req: T): Omit<T, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'> {
-  const { id: _i, ownerId: _o, createdAt: _c, updatedAt: _u, ...safe } = req as Record<string, unknown>;
-  return safe as Omit<T, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'>;
+function projectScore(app: Application): Application {
+  return {
+    ...app,
+    alignmentScore: app.alignmentAnalysis?.score,
+  };
 }
 
 export async function getApplications(): Promise<ApplicationListResponse> {
   await delay(FAST);
-  return { applications: mockState.applications };
+  return { applications: mockState.applications.map(projectScore) };
 }
 
 export async function postApplication(
   req: ApplicationCreate,
 ): Promise<{ application: Application }> {
   const validated = ApplicationCreateSchema.parse(req);
-  const safe = stripServerKeys(validated);
   await delay(FAST);
   const application: Application = {
     id: newId('app'),
     ownerId: 'mock_user',
-    company: safe.company,
-    role: safe.role,
-    url: safe.url,
-    source: safe.source,
-    location: safe.location,
-    remote: safe.remote ?? false,
-    salaryRange: safe.salaryRange,
-    jobDescription: safe.jobDescription,
-    status: safe.status,
-    appliedDate: safe.appliedDate,
-    followUpDate: safe.followUpDate,
-    notes: safe.notes,
-    alignmentAnalysis: safe.alignmentAnalysis,
+    company: validated.company,
+    role: validated.role,
+    url: validated.url,
+    source: validated.source,
+    location: validated.location,
+    remote: validated.remote ?? false,
+    salaryRange: validated.salaryRange,
+    jobDescription: validated.jobDescription,
+    status: validated.status,
+    appliedDate: validated.appliedDate,
+    followUpDate: validated.followUpDate,
+    notes: validated.notes,
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
   mockState.applications.unshift(application);
-  return { application };
+  return { application: projectScore(application) };
 }
 
 export async function patchApplication(
@@ -403,17 +419,16 @@ export async function patchApplication(
   patch: ApplicationUpdate,
 ): Promise<{ application: Application }> {
   const validated = ApplicationUpdateSchema.parse(patch);
-  const safe = stripServerKeys(validated);
   await delay(FAST);
   const idx = mockState.applications.findIndex((a) => a.id === id);
   if (idx < 0) throw new Error(`Application not found: ${id}`);
   const merged: Application = {
     ...mockState.applications[idx],
-    ...safe,
+    ...validated,
     updatedAt: nowIso(),
   };
   mockState.applications[idx] = merged;
-  return { application: merged };
+  return { application: projectScore(merged) };
 }
 
 export async function deleteApplication(id: string): Promise<{ ok: true }> {
@@ -455,14 +470,31 @@ export async function getWatchlist(): Promise<WatchlistListResponse> {
 export async function postWatchlistAdd(
   req: WatchlistAddRequest,
 ): Promise<WatchlistAddResponse> {
-  WatchlistAddSchema.parse(req);
+  // Schema validation enforces the slug regex; if a Frontend Storybook
+  // story bypasses validation and submits a malformed slug, fall through
+  // to a {valid:false} response so the unhappy-path UI is exercised.
+  const parsed = WatchlistAddSchema.safeParse(req);
   await delay(FAST);
+  if (!parsed.success) {
+    return {
+      company: {
+        id: newId('w'),
+        ownerId: 'mock_user',
+        company: req.company || '',
+        atsProvider: req.atsProvider,
+        atsSlug: req.atsSlug || '',
+        active: false,
+        createdAt: nowIso(),
+      },
+      validation: { valid: false, error: parsed.error.issues[0]?.message ?? 'invalid input' },
+    };
+  }
   const company = {
     id: newId('w'),
     ownerId: 'mock_user',
-    company: req.company,
-    atsProvider: req.atsProvider,
-    atsSlug: req.atsSlug,
+    company: parsed.data.company,
+    atsProvider: parsed.data.atsProvider,
+    atsSlug: parsed.data.atsSlug,
     active: true,
     createdAt: nowIso(),
   };
@@ -498,11 +530,14 @@ export async function patchDiscoveryStatus(
   await delay(FAST);
   const idx = mockState.discovery.findIndex((p) => p.id === id);
   if (idx < 0) throw new Error(`Posting not found: ${id}`);
-  mockState.discovery[idx] = {
-    ...mockState.discovery[idx],
-    status: req.status,
-    applicationId: req.applicationId,
-  };
+  const prev = mockState.discovery[idx];
+  // Discriminated union narrowing: applicationId exists only on the
+  // 'drafted' arm. Non-drafted transitions preserve any existing
+  // applicationId on the row (do not clear) — useful if the user reverts
+  // a 'drafted' posting to 'viewed' for further editing.
+  mockState.discovery[idx] = req.status === 'drafted'
+    ? { ...prev, status: req.status, applicationId: req.applicationId }
+    : { ...prev, status: req.status };
   return { ok: true };
 }
 

@@ -67,3 +67,21 @@ Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint
 ### `__MOCK_MODE__` sentinel in `lib/mock-api.ts`
 
 **Why:** `scripts/integrate.sh status` greps for the literal token to report sprint vs live mode. Don't remove it from the file even if TS lint flags it as unused.
+
+### `Application.alignmentScore` is a read-side derived field, not a column
+
+**Why:** The Frontend prototype reads `application.alignmentScore` directly; the persisted truth is `application.alignmentAnalysis?.score`. Backend Core projects the score into list responses via a helper (`projectScore()` in `lib/mock-api.ts` mirrors the pattern).
+
+**For Foundation Agent on Day 1:** when translating `ApplicationSchema` to `prisma/schema.prisma`, OMIT the `alignmentScore` column. Persist only `alignmentAnalysis` as a JSON column (or normalized table if you choose). The TS schema includes `alignmentScore` for read-shape convenience; the comment in `models.ts` near the field flags it.
+
+### `Job.endDate` is `string | undefined` (was `string` with empty-default)
+
+**Why:** PR #4 switched `JobSchema.endDate` from `.default('')` to `optionalString`-style preprocessing so all empty-as-undefined normalization is consistent across the codebase.
+
+**For Foundation Agent on Day 1:** the corresponding Prisma column should be nullable (`endDate String?`), not `NOT NULL DEFAULT ''`. Frontend renderers fall back to "Present" on null via `endDate ?? 'Present'`.
+
+### `SERVER_NEVER_STORES` policy is broader than the `integrity.sh` Rule 9 grep
+
+**Why:** The grep token list was narrowed (removed `prompt`, `completion`) to eliminate false-positives on SYSTEM constants. The textual `SERVER_NEVER_STORES` policy still says "raw prompts" and "raw Claude responses" are never persisted — but the integrity script no longer enforces those specific words. The gap is intentional: prompt/completion enforcement moves from grep to Security Agent's PR-level adversarial review.
+
+**For Security Agent:** treat any new code under `/app/api/`, `/lib/server/`, `/lib/db/`, or `/lib/ai/` that touches assembled user-message content or Claude response bodies as a manual review item. Log statements and DB writes that name those values should be flagged regardless of token spelling.
