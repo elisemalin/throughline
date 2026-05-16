@@ -46,6 +46,24 @@ Day 0 complete on main. Contracts + mock-api stable.
 ### ~10:05 UTC — Foundation Agent spawned (background)
 Branch: `agent/foundation/d1`. Sequential Day 1 work — Next.js 15 + Tailwind + Prisma + Clerk + Vercel + CI scaffold. Translates `/contracts/models.ts` to `prisma/schema.prisma`. Cannot fully deploy without credentials (Neon DATABASE_URL, Clerk keys, Vercel hookup); PR will land structurally correct and ready-to-deploy.
 
+### ~10:18 UTC — [PR #5](https://github.com/elisemalin/throughline/pull/5) opened (Foundation Day 1)
++4881 / -5 across 23 files. 5 commits: repo scaffolding, Prisma schema, Clerk auth surface, CI workflow, CHANGELOG/REVIEW_CHECKLIST. Build passes with `force-dynamic` at root layout. Integrity passes.
+
+### ~10:21 UTC — /review-pr 5
+Verdict: **CHANGES-RECOMMENDED**. 5 MEDIUMs + 7 LOWs, no CRITICALs. Foundation's substrate is structurally sound; reviewer caught:
+- Systematic timestamp drift (contracts say `z.string()`, Prisma says `DateTime`)
+- JSON column read pattern undocumented
+- Missing initial migration in `prisma/migrations/`
+- ESLint 9 paired with legacy `.eslintrc.json` (works today, fragile)
+- Webhook public-route TODO for Day 2
+
+PR stays OPEN per the autonomy rule (only APPROVE-RECOMMENDED auto-merges).
+
+### ~10:25 UTC — Foundation followup agent spawned (background)
+Focused prompt: fix the 5 MEDIUMs + cheap LOWs. Will commit to `agent/foundation/d1`, push, comment on PR. After it returns: re-review and merge if APPROVE-RECOMMENDED.
+
+**Auto-merge cap status:** 4 of 6 used (PRs #1–#4). Foundation = #5; parallel sprint will start once Foundation lands.
+
 **Standing autonomy rules in effect:**
 - Auto-merge only on `bash scripts/integrity.sh` exit 0 AND `/review-pr` returns APPROVE-RECOMMENDED
 - No force-push, no --no-verify, no AI co-authorship attribution
