@@ -40,6 +40,7 @@ import {
   type ApplicationCreate,
   type ApplicationListResponse,
   type ApplicationUpdate,
+  type ApplicationAlignmentResponse,
   type ApplicationEventListResponse,
   type CoverLetterRequest,
   type DiscoveryListResponse,
@@ -103,6 +104,7 @@ const newId = (prefix: string) =>
 export type MockState = {
   skillsDB: SkillsDB | null;
   applications: Application[];
+  applicationEvents: Record<string, ApplicationEventListResponse['events']>;
   documents: Document[];
   watchlist: WatchlistAddResponse['company'][];
   discovery: DiscoveryListResponse['postings'];
@@ -111,6 +113,7 @@ export type MockState = {
 const mockState: MockState = {
   skillsDB: null,
   applications: [],
+  applicationEvents: {},
   documents: [],
   watchlist: [],
   discovery: [],
@@ -736,6 +739,20 @@ export async function getApplications(): Promise<ApplicationListResponse> {
   return { applications: mockState.applications.map(projectScore) };
 }
 
+function recordEvent(
+  applicationId: string,
+  event: Omit<ApplicationEventListResponse['events'][number], 'id' | 'applicationId' | 'at'>,
+): void {
+  const list = mockState.applicationEvents[applicationId] ?? [];
+  list.unshift({
+    id: newId('evt'),
+    applicationId,
+    at: nowIso(),
+    ...event,
+  });
+  mockState.applicationEvents[applicationId] = list;
+}
+
 export async function postApplication(
   req: ApplicationCreate,
 ): Promise<{ application: Application }> {
@@ -760,6 +777,7 @@ export async function postApplication(
     updatedAt: nowIso(),
   };
   mockState.applications.unshift(application);
+  recordEvent(application.id, { kind: 'created' });
   return { application: projectScore(application) };
 }
 
@@ -771,12 +789,25 @@ export async function patchApplication(
   await delay(FAST);
   const idx = mockState.applications.findIndex((a) => a.id === id);
   if (idx < 0) throw new Error(`Application not found: ${id}`);
+  const previous = mockState.applications[idx];
   const merged: Application = {
-    ...mockState.applications[idx],
+    ...previous,
     ...validated,
     updatedAt: nowIso(),
   };
   mockState.applications[idx] = merged;
+  // WHY: backend writes events on transitions; the mock mirrors that so the
+  // Tracker detail timeline shows the same events the real backend will.
+  if (validated.status && validated.status !== previous.status) {
+    recordEvent(id, {
+      kind: 'status_change',
+      fromStatus: previous.status,
+      toStatus: validated.status,
+    });
+  }
+  if (validated.notes && validated.notes !== previous.notes) {
+    recordEvent(id, { kind: 'note', note: validated.notes.slice(0, 120) });
+  }
   return { application: projectScore(merged) };
 }
 
@@ -786,10 +817,33 @@ export async function deleteApplication(id: string): Promise<{ ok: true }> {
   return { ok: true };
 }
 
-export async function getApplicationEvents(_id: string): Promise<ApplicationEventListResponse> {
+export async function getApplicationEvents(id: string): Promise<ApplicationEventListResponse> {
   await delay(FAST);
-  // Backend Core writes events on status transitions; mock returns empty.
-  return { events: [] };
+  // Backend Core writes events on status transitions; the mock keeps a
+  // per-application transcript in mockState.applicationEvents (initialized
+  // lazily) so the Tracker detail timeline can render across the same
+  // session.
+  const list = (mockState.applicationEvents ?? {})[id] ?? [];
+  return { events: list };
+}
+
+// Mirrors POST /api/applications/:id/alignment on main. Recomputes the
+// AlignmentAnalysis from the row's jobDescription and persists the snapshot.
+export async function postApplicationAlignment(
+  id: string,
+): Promise<ApplicationAlignmentResponse> {
+  await delay(MED);
+  const idx = mockState.applications.findIndex((a) => a.id === id);
+  if (idx < 0) throw new Error(`Application not found: ${id}`);
+  const row = mockState.applications[idx];
+  const analysis = await postAlignment({ jobDescription: row.jobDescription ?? '' });
+  const merged: Application = {
+    ...row,
+    alignmentAnalysis: analysis,
+    updatedAt: nowIso(),
+  };
+  mockState.applications[idx] = merged;
+  return { application: projectScore(merged) };
 }
 
 // ---------------------------------------------------------------------------

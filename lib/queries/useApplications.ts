@@ -7,6 +7,7 @@ import {
   getApplications,
   patchApplication,
   postApplication,
+  postApplicationAlignment,
 } from '@/lib/mock-api';
 import type {
   ApplicationCreate,
@@ -54,5 +55,16 @@ export function useDeleteApplication() {
   return useMutation({
     mutationFn: (id: string) => deleteApplication(id),
     onSuccess: () => client.invalidateQueries({ queryKey: QK.applications }),
+  });
+}
+
+export function useRecomputeAlignment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => postApplicationAlignment(id),
+    onSuccess: (_data, id) => {
+      client.invalidateQueries({ queryKey: QK.applications });
+      client.invalidateQueries({ queryKey: QK.applicationEvents(id) });
+    },
   });
 }
