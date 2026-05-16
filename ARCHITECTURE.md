@@ -28,7 +28,7 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 
 | Package | Justification |
 |---|---|
-| `zod` 3.x | Runtime validation at every API boundary. Imported by all `/contracts/*.ts` schemas and used by Backend Core handlers (Zod `parse()` at request entry), AI Integration (validate every Claude JSON response), and `/lib/mock-api.ts` (boundary parity with the real route). Chosen over io-ts and yup because it is the studio default for TS-first inference; the contracts file requires that one Zod schema be both the validator and the source of truth for the derived TS type. |
+| `zod` 3.x | Runtime validation at every API boundary. Imported by all `/contracts/*.ts` schemas and used by Backend Core handlers (Zod `parse()` at request entry), AI Integration (validate every Claude JSON response), and will be used by `/lib/mock-api.ts` once Frontend Agent wires the boundary. Chosen over io-ts and yup because it is the studio default for TS-first inference; the contracts file requires that one Zod schema be both the validator and the source of truth for the derived TS type. |
 | `next` 15 | Foundation Agent installs on Day 1. Justification for choosing Next over Vite-only: App Router enables the `/app/api/*` routes and middleware that Backend Core and Security Agent rely on, and Vercel deployment is one-step. |
 | `@prisma/client` 5 + `prisma` 5 | Foundation Agent installs on Day 1. Maps `/contracts/models.ts` to Postgres. JSON columns are used for nested SkillsDB shapes per the Decision below. |
 | `@clerk/nextjs` | Foundation Agent installs on Day 1. Justification for choosing Clerk over Firebase Auth: BYOK Anthropic flow is browser-side, server only validates session, and Clerk's middleware integrates with Next.js App Router. |
@@ -79,6 +79,24 @@ Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint
 **Why:** PR #4 switched `JobSchema.endDate` from `.default('')` to `optionalString`-style preprocessing so all empty-as-undefined normalization is consistent across the codebase.
 
 **For Foundation Agent on Day 1:** the corresponding Prisma column should be nullable (`endDate String?`), not `NOT NULL DEFAULT ''`. Frontend renderers fall back to "Present" on null via `endDate ?? 'Present'`.
+
+### Date/timestamp serialization at the API boundary
+
+**Why:** `/contracts/models.ts` declares every timestamp (`createdAt`, `updatedAt`, `at`, `postedAt`, `lastPolled`) as `z.string()` — an ISO transport shape. Prisma's `schema.prisma` stores those columns as `DateTime` (the right shape for Postgres indexing and storage efficiency). Prisma's client then hydrates each `DateTime` as a JS `Date`. If Backend Core hands a `Date` instance to `res.json()`, contract-typed consumers will receive an ISO string by accident of `Date.prototype.toJSON`, but TypeScript will not catch the divergence: any consumer that does `new Date(row.createdAt)` math against the contract type assumes `string` and the code path silently breaks under unit test mocks that pass real `Date` instances.
+
+**Rule:** Backend Core MUST project `Date -> string` at the API boundary. The canonical helper is `toApiDate` in `lib/db/serialize.ts`:
+
+```ts
+toApiDate(value: Date | string | null | undefined): string | undefined
+```
+
+Every Prisma row that leaves an `app/api/*` route as part of a response goes through a per-table projector in the same module (`projectApplication`, `projectSkillsDB`, `projectWatchlistCompany`, etc.) that calls `toApiDate` on every Date column and `parseContact` / `parseJobs` / `parseAlignmentAnalysis` on every Json column.
+
+### Reading JSON columns
+
+**Why:** `SkillsDB.contact`, `SkillsDB.jobs`, and `Application.alignmentAnalysis` are Prisma `Json` columns. Prisma generates them as `Prisma.JsonValue` (a wide union effectively equivalent to `unknown`). Without a single read-boundary helper every Backend Core consumer would re-derive an unsafe cast or call `Schema.parse(...)` inline at each call site, and any drift between the persisted JSON and the contract Zod schema would surface as a runtime error inside an arbitrary route instead of at a single defined boundary.
+
+**Rule:** All `prisma.skillsDB.findUnique` / `.findFirst` / `.findMany` reads run their `contact` and `jobs` columns through `parseContact` / `parseJobs` (in `lib/db/serialize.ts`) before returning to API consumers. All `prisma.application.find*` reads run their `alignmentAnalysis` column through `parseAlignmentAnalysis` (same module). The per-table projectors in that module already do both.
 
 ### `SERVER_NEVER_STORES` policy is broader than the `integrity.sh` Rule 9 grep
 
