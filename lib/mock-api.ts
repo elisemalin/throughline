@@ -11,44 +11,73 @@
 // which has identical exports but uses fetch() against /app/api/*. Callers
 // do not change. That is the entire integration mechanism for the frontend.
 //
-// CONTRACT: every function signature here matches a route in
-// /contracts/api.ts. The integrity script verifies this at CI time.
+// Every function in this file:
+//   1. Has a signature matching its API_ROUTES entry. No extra parameters
+//      that won't exist post-integration.
+//   2. Validates its request through the relevant Zod schema FIRST so the
+//      Frontend Agent sees the real boundary behavior during the sprint.
+//   3. Strips server-controlled fields (id, ownerId, createdAt) from spread
+//      payloads so a malicious request shape cannot clobber server state.
+//
+// A shared in-memory MockState replaces session/DB state during the sprint;
+// integrate.sh deletes it.
 
-import type {
-  AlignmentRequest,
-  AlignmentResponse,
-  ApplicationCreate,
-  ApplicationListResponse,
-  ApplicationUpdate,
-  CoverLetterRequest,
-  DiscoveryListResponse,
-  DiscoveryPollResponse,
-  DiscoveryUpdateStatusRequest,
-  DocumentListResponse,
-  DocumentResponse,
-  DossierRequest,
-  MockInterviewRequest,
-  MockInterviewResponse,
-  NinetyDayRequest,
-  ResumeRequest,
-  SkillsIngestRequest,
-  SkillsIngestResponse,
-  SkillsReadResponse,
-  SkillsUpdate,
-  WatchlistAddRequest,
-  WatchlistAddResponse,
-  WatchlistListResponse,
+import {
+  AlignmentRequestSchema,
+  ApplicationCreateSchema,
+  ApplicationUpdateSchema,
+  CoverLetterRequestSchema,
+  DiscoveryUpdateSchema,
+  DossierRequestSchema,
+  MockInterviewRequestSchema,
+  NinetyDayRequestSchema,
+  ResumeRequestSchema,
+  SkillsIngestRequestSchema,
+  SkillsUpdateSchema,
+  WatchlistAddSchema,
+  type AlignmentRequest,
+  type AlignmentResponse,
+  type ApplicationCreate,
+  type ApplicationListResponse,
+  type ApplicationUpdate,
+  type ApplicationEventListResponse,
+  type CoverLetterRequest,
+  type DiscoveryListResponse,
+  type DiscoveryPollResponse,
+  type DiscoveryUpdateRequest,
+  type DocumentListResponse,
+  type DocumentResponse,
+  type DossierRequest,
+  type MockInterviewRequest,
+  type MockInterviewResponse,
+  type NinetyDayRequest,
+  type ResumeRequest,
+  type SkillsIngestRequest,
+  type SkillsIngestResponse,
+  type SkillsReadResponse,
+  type SkillsUpdate,
+  type WatchlistAddRequest,
+  type WatchlistAddResponse,
+  type WatchlistListResponse,
 } from '@/contracts/api';
 import type {
+  AlignmentAnalysis,
   Application,
   Document,
   SkillsDB,
 } from '@/contracts/models';
 
 // ---------------------------------------------------------------------------
-// Latency simulator — keep the UI honest about loading states
+// Mock mode sentinel. scripts/integrate.sh greps for __MOCK_MODE__ to detect
+// sprint vs live mode. Don't remove it; the integration script depends on it.
 // ---------------------------------------------------------------------------
 const __MOCK_MODE__ = true;
+void __MOCK_MODE__;
+
+// ---------------------------------------------------------------------------
+// Latency simulator and id helpers
+// ---------------------------------------------------------------------------
+
 const FAST = 120;
 const MED = 600;
 const SLOW = 1400;
@@ -59,17 +88,51 @@ const newId = (prefix: string) =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
 // ---------------------------------------------------------------------------
-// POST /api/alignment
-// Mirrors mockAlignmentAnalysis() in the prototype.
+// Shared in-memory state
+//
+// Frontend Agent: the live state is owned by Zustand stores under /stores/.
+// The mock module reads/writes a separate "server-side" in-memory store so
+// API calls actually persist within the session. Lost on reload — fine for
+// the sprint. Replaced by real Backend Core handlers on Day 5.
 // ---------------------------------------------------------------------------
-export async function postAlignment(
-  req: AlignmentRequest,
-  // Frontend Agent: passes the user's SkillsDB explicitly during mock mode.
-  // After integration, the server resolves it from the session and this
-  // parameter goes away.
-  skillsDB: SkillsDB,
-): Promise<AlignmentResponse> {
+
+type MockState = {
+  skillsDB: SkillsDB | null;
+  applications: Application[];
+  documents: Document[];
+  watchlist: WatchlistAddResponse['company'][];
+  discovery: DiscoveryListResponse['postings'];
+};
+
+const mockState: MockState = {
+  skillsDB: null,
+  applications: [],
+  documents: [],
+  watchlist: [],
+  discovery: [],
+};
+
+// Test-only escape hatch: lets the Frontend Agent's Storybook stories seed
+// state without going through the API. Not exported through the package's
+// public surface; the integrate.sh swap removes this entirely.
+export function __seedMockState(patch: Partial<MockState>): void {
+  Object.assign(mockState, patch);
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/alignment
+//
+// Mirrors mockAlignmentAnalysis() in the prototype. Mock reads SkillsDB from
+// mockState (the real route resolves it from the session). Field name is
+// `requirement` per /contracts/models.ts AlignmentRequirement — the
+// prototype's `term` field was renamed to align with the contract.
+// ---------------------------------------------------------------------------
+
+export async function postAlignment(req: AlignmentRequest): Promise<AlignmentResponse> {
+  AlignmentRequestSchema.parse(req);
   await delay(MED);
+
+  const skillsDB = mockState.skillsDB ?? emptySkillsDB();
   const jd = (req.jobDescription || '').toLowerCase();
   const haystack = [
     ...skillsDB.coreSkills,
@@ -88,10 +151,10 @@ export async function postAlignment(
     ),
   );
 
-  const requirements = tokens.slice(0, 14).map((t) => {
-    const matched = haystack.some(
-      (h) => h.includes(t) || t.includes(h.split(' ')[0] || ''),
-    );
+  const requirements: AlignmentAnalysis['requirements'] = tokens.slice(0, 14).map((t) => {
+    // Multi-word skill entries are compared by their full lowercase form;
+    // single-word JD tokens still match when contained in a skill phrase.
+    const matched = haystack.some((h) => h.includes(t));
     const strength = matched ? 7 + Math.floor(Math.random() * 3) : Math.floor(Math.random() * 4);
     const type: 'strong' | 'partial' | 'missing' = matched
       ? 'strong'
@@ -110,10 +173,9 @@ export async function postAlignment(
   });
 
   const matched = requirements.filter((r) => r.type !== 'missing').length;
-  const score = Math.min(
-    97,
-    Math.round((matched / Math.max(requirements.length, 1)) * 100),
-  );
+  const score = requirements.length === 0
+    ? 0
+    : Math.min(97, Math.round((matched / requirements.length) * 100));
 
   return {
     score,
@@ -135,12 +197,13 @@ export async function postAlignment(
 // Document generation
 // ---------------------------------------------------------------------------
 
-export async function postResume(
-  req: ResumeRequest,
-  skillsDB: SkillsDB,
-  application?: Application,
-): Promise<DocumentResponse> {
+export async function postResume(req: ResumeRequest): Promise<DocumentResponse> {
+  ResumeRequestSchema.parse(req);
   await delay(SLOW);
+  const skillsDB = mockState.skillsDB ?? emptySkillsDB();
+  const application = req.applicationId
+    ? mockState.applications.find((a) => a.id === req.applicationId)
+    : undefined;
   return {
     kind: 'resume',
     title: `Resume for ${application?.role || 'general'}${application?.company ? ` (${application.company})` : ''}`,
@@ -150,12 +213,14 @@ export async function postResume(
   };
 }
 
-export async function postCoverLetter(
-  req: CoverLetterRequest,
-  skillsDB: SkillsDB,
-  application: Application,
-): Promise<DocumentResponse> {
+export async function postCoverLetter(req: CoverLetterRequest): Promise<DocumentResponse> {
+  CoverLetterRequestSchema.parse(req);
   await delay(SLOW);
+  const skillsDB = mockState.skillsDB ?? emptySkillsDB();
+  const application = mockState.applications.find((a) => a.id === req.applicationId);
+  if (!application) {
+    throw new Error(`Application not found: ${req.applicationId}`);
+  }
   return {
     kind: 'cover_letter',
     title: `Cover letter for ${application.company || 'draft'}`,
@@ -165,11 +230,13 @@ export async function postCoverLetter(
   };
 }
 
-export async function postNinetyDayPlan(
-  req: NinetyDayRequest,
-  application: Application,
-): Promise<DocumentResponse> {
+export async function postNinetyDayPlan(req: NinetyDayRequest): Promise<DocumentResponse> {
+  NinetyDayRequestSchema.parse(req);
   await delay(SLOW);
+  const application = mockState.applications.find((a) => a.id === req.applicationId);
+  if (!application) {
+    throw new Error(`Application not found: ${req.applicationId}`);
+  }
   return {
     kind: 'ninety_day',
     title: `90-day plan for ${application.company || 'draft'}`,
@@ -179,11 +246,13 @@ export async function postNinetyDayPlan(
   };
 }
 
-export async function postDossier(
-  req: DossierRequest,
-  application: Application,
-): Promise<DocumentResponse> {
+export async function postDossier(req: DossierRequest): Promise<DocumentResponse> {
+  DossierRequestSchema.parse(req);
   await delay(SLOW);
+  const application = mockState.applications.find((a) => a.id === req.applicationId);
+  if (!application) {
+    throw new Error(`Application not found: ${req.applicationId}`);
+  }
   return {
     kind: 'dossier',
     title: `Dossier for ${application.company || 'company'}`,
@@ -194,25 +263,57 @@ export async function postDossier(
 }
 
 // ---------------------------------------------------------------------------
-// Mock Interview — multi-turn
+// Mock Interview — multi-turn with opener + termination
+//
+// Empty transcript → return an opener anchored to the application role.
+// After 10+ user turns → set done=true and return a wrap-up message.
+// Otherwise cycle through follow-up archetypes.
 // ---------------------------------------------------------------------------
+
+const MOCK_OPENERS = [
+  'Thanks for making the time. To start: walk me through your most relevant experience for this role.',
+  'Tell me about the most impactful project you have shipped that maps to what we are hiring for.',
+  'What drew you to this opening specifically?',
+];
+
+const MOCK_FOLLOWUPS = [
+  'Good. Drill into the trickiest part of that. What broke and how did you handle it?',
+  'Walk me through how you decided the scope. What did you cut?',
+  'Tell me about a stakeholder who pushed back. What was the disagreement and how did it resolve?',
+  'What would you do differently if you had to do that work again?',
+  'How did you measure success? Who saw the metric?',
+];
+
+const MOCK_WRAPUP = "That covers what I had. We'll be in touch.";
 
 export async function postMockInterviewTurn(
   req: MockInterviewRequest,
 ): Promise<MockInterviewResponse> {
+  MockInterviewRequestSchema.parse(req);
   await delay(MED);
-  const followups = [
-    'Good. Drill into the trickiest part of that. What broke and how did you handle it?',
-    'Walk me through how you decided the scope. What did you cut?',
-    'Tell me about a stakeholder who pushed back. What was the disagreement and how did it resolve?',
-    'What would you do differently if you had to do that work again?',
-    'How did you measure success? Who saw the metric?',
-  ];
+
+  const userTurns = req.transcript.filter((t) => t.role === 'user').length;
+
+  if (req.transcript.length === 0) {
+    return {
+      next: { role: 'interviewer', text: MOCK_OPENERS[0] },
+      done: false,
+    };
+  }
+
+  if (userTurns >= 10) {
+    return {
+      next: { role: 'interviewer', text: MOCK_WRAPUP },
+      done: true,
+    };
+  }
+
   return {
     next: {
       role: 'interviewer',
-      text: followups[req.transcript.length % followups.length],
+      text: MOCK_FOLLOWUPS[userTurns % MOCK_FOLLOWUPS.length],
     },
+    done: false,
   };
 }
 
@@ -221,77 +322,110 @@ export async function postMockInterviewTurn(
 // ---------------------------------------------------------------------------
 
 export async function postSkillsIngest(
-  _req: SkillsIngestRequest,
+  req: SkillsIngestRequest,
 ): Promise<SkillsIngestResponse> {
+  SkillsIngestRequestSchema.parse(req);
   await delay(SLOW);
-  // Mock: returns an empty SkillsDB; real parsing happens once AI Integration
-  // ships /lib/ai/skills-ingest.ts. Frontend can call this to drive its
-  // loading/error UI shapes without waiting on the real implementation.
+  const skillsDB = emptySkillsDB();
+  mockState.skillsDB = skillsDB;
   return {
-    skillsDB: emptySkillsDB(),
+    skillsDB,
     warnings: ['mock-ingest: no parsing performed during sprint'],
   };
 }
 
 export async function getSkills(): Promise<SkillsReadResponse> {
   await delay(FAST);
-  return { skillsDB: null };
+  return { skillsDB: mockState.skillsDB };
 }
 
-export async function putSkills(_update: SkillsUpdate): Promise<SkillsReadResponse> {
+export async function putSkills(update: SkillsUpdate): Promise<SkillsReadResponse> {
+  SkillsUpdateSchema.parse(update);
   await delay(FAST);
-  return { skillsDB: emptySkillsDB() };
+  const current = mockState.skillsDB ?? emptySkillsDB();
+  mockState.skillsDB = {
+    ...current,
+    ...update,
+    contact: { ...current.contact, ...(update.contact ?? {}) },
+    updatedAt: nowIso(),
+  } as SkillsDB;
+  return { skillsDB: mockState.skillsDB };
 }
 
 // ---------------------------------------------------------------------------
 // Applications
+//
+// stripServerKeys filters keys the client cannot set even if the TS type
+// erased and the request body carried them.
 // ---------------------------------------------------------------------------
+
+function stripServerKeys<T extends Record<string, unknown>>(req: T): Omit<T, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'> {
+  const { id: _i, ownerId: _o, createdAt: _c, updatedAt: _u, ...safe } = req as Record<string, unknown>;
+  return safe as Omit<T, 'id' | 'ownerId' | 'createdAt' | 'updatedAt'>;
+}
 
 export async function getApplications(): Promise<ApplicationListResponse> {
   await delay(FAST);
-  return { applications: [] };
+  return { applications: mockState.applications };
 }
 
 export async function postApplication(
   req: ApplicationCreate,
 ): Promise<{ application: Application }> {
+  const validated = ApplicationCreateSchema.parse(req);
+  const safe = stripServerKeys(validated);
   await delay(FAST);
-  return {
-    application: {
-      id: newId('app'),
-      ownerId: 'mock_user',
-      remote: req.remote ?? false,
-      status: req.status ?? 'researching',
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      ...req,
-    },
+  const application: Application = {
+    id: newId('app'),
+    ownerId: 'mock_user',
+    company: safe.company,
+    role: safe.role,
+    url: safe.url,
+    source: safe.source,
+    location: safe.location,
+    remote: safe.remote ?? false,
+    salaryRange: safe.salaryRange,
+    jobDescription: safe.jobDescription,
+    status: safe.status,
+    appliedDate: safe.appliedDate,
+    followUpDate: safe.followUpDate,
+    notes: safe.notes,
+    alignmentAnalysis: safe.alignmentAnalysis,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
   };
+  mockState.applications.unshift(application);
+  return { application };
 }
 
 export async function patchApplication(
   id: string,
-  _patch: ApplicationUpdate,
+  patch: ApplicationUpdate,
 ): Promise<{ application: Application }> {
+  const validated = ApplicationUpdateSchema.parse(patch);
+  const safe = stripServerKeys(validated);
   await delay(FAST);
-  return {
-    application: {
-      id,
-      ownerId: 'mock_user',
-      company: '',
-      role: '',
-      remote: false,
-      status: 'researching',
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      ..._patch,
-    },
+  const idx = mockState.applications.findIndex((a) => a.id === id);
+  if (idx < 0) throw new Error(`Application not found: ${id}`);
+  const merged: Application = {
+    ...mockState.applications[idx],
+    ...safe,
+    updatedAt: nowIso(),
   };
+  mockState.applications[idx] = merged;
+  return { application: merged };
 }
 
-export async function deleteApplication(_id: string): Promise<{ ok: true }> {
+export async function deleteApplication(id: string): Promise<{ ok: true }> {
   await delay(FAST);
+  mockState.applications = mockState.applications.filter((a) => a.id !== id);
   return { ok: true };
+}
+
+export async function getApplicationEvents(_id: string): Promise<ApplicationEventListResponse> {
+  await delay(FAST);
+  // Backend Core writes events on status transitions; mock returns empty.
+  return { events: [] };
 }
 
 // ---------------------------------------------------------------------------
@@ -300,11 +434,12 @@ export async function deleteApplication(_id: string): Promise<{ ok: true }> {
 
 export async function getDocuments(): Promise<DocumentListResponse> {
   await delay(FAST);
-  return { documents: [] };
+  return { documents: mockState.documents };
 }
 
-export async function deleteDocument(_id: string): Promise<{ ok: true }> {
+export async function deleteDocument(id: string): Promise<{ ok: true }> {
   await delay(FAST);
+  mockState.documents = mockState.documents.filter((d) => d.id !== id);
   return { ok: true };
 }
 
@@ -314,56 +449,65 @@ export async function deleteDocument(_id: string): Promise<{ ok: true }> {
 
 export async function getWatchlist(): Promise<WatchlistListResponse> {
   await delay(FAST);
-  return { companies: [] };
+  return { companies: mockState.watchlist };
 }
 
 export async function postWatchlistAdd(
   req: WatchlistAddRequest,
 ): Promise<WatchlistAddResponse> {
+  WatchlistAddSchema.parse(req);
   await delay(FAST);
-  return {
-    company: {
-      id: newId('w'),
-      ownerId: 'mock_user',
-      company: req.company,
-      atsProvider: req.atsProvider,
-      atsSlug: req.atsSlug,
-      active: true,
-      createdAt: nowIso(),
-    },
-    validation: { valid: true },
+  const company = {
+    id: newId('w'),
+    ownerId: 'mock_user',
+    company: req.company,
+    atsProvider: req.atsProvider,
+    atsSlug: req.atsSlug,
+    active: true,
+    createdAt: nowIso(),
   };
+  mockState.watchlist.push(company);
+  return { company, validation: { valid: true } };
 }
 
-export async function deleteWatchlistCompany(_id: string): Promise<{ ok: true }> {
+export async function deleteWatchlistCompany(id: string): Promise<{ ok: true }> {
   await delay(FAST);
+  mockState.watchlist = mockState.watchlist.filter((w) => w.id !== id);
   return { ok: true };
 }
 
 export async function getDiscovery(): Promise<DiscoveryListResponse> {
   await delay(FAST);
-  return { postings: [] };
+  return { postings: mockState.discovery };
 }
 
 export async function postDiscoveryPoll(): Promise<DiscoveryPollResponse> {
   await delay(MED);
   return {
     newPostings: 0,
-    totalPostings: 0,
+    totalPostings: mockState.discovery.length,
     polledAt: nowIso(),
   };
 }
 
 export async function patchDiscoveryStatus(
-  _id: string,
-  _req: DiscoveryUpdateStatusRequest,
+  id: string,
+  req: DiscoveryUpdateRequest,
 ): Promise<{ ok: true }> {
+  DiscoveryUpdateSchema.parse(req);
   await delay(FAST);
+  const idx = mockState.discovery.findIndex((p) => p.id === id);
+  if (idx < 0) throw new Error(`Posting not found: ${id}`);
+  mockState.discovery[idx] = {
+    ...mockState.discovery[idx],
+    status: req.status,
+    applicationId: req.applicationId,
+  };
   return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
-// Private helpers — straight from the prototype's mock document generators
+// Private renderers — straight from the prototype's mock document generators
 // ---------------------------------------------------------------------------
 
 function emptySkillsDB(): SkillsDB {
@@ -373,7 +517,7 @@ function emptySkillsDB(): SkillsDB {
     fullName: '',
     headline: '',
     positioning: '',
-    contact: { email: '' },
+    contact: { email: '', phone: '', location: '', linkedin: '', site: '' },
     targetRoles: [],
     awards: [],
     jobs: [],
@@ -511,7 +655,3 @@ Inferred from the JD and the company's current situation. What problems is this 
 - About success metrics in the first 90 days
 `;
 }
-
-// __MOCK_MODE__ is read by scripts/integrate.sh status to detect sprint vs
-// live mode. Don't remove it; the integration script greps for it.
-void __MOCK_MODE__;

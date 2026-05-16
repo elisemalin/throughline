@@ -4,10 +4,12 @@
 // the implementations under /lib/ats/*; Backend Core consumes the registry.
 //
 // Each adapter normalizes provider-specific posting shapes to a single
-// DiscoveredPosting row (see /contracts/models.ts).
+// NormalizedPosting that Backend Core wraps with server-set fields into a
+// DiscoveredPosting (see /contracts/models.ts).
 
 import { z } from 'zod';
-import type { AtsProvider, DiscoveredPosting } from './models';
+import { ATS_PROVIDERS, AtsProviderSchema, DiscoveredPostingSchema } from './models';
+import type { AtsProvider } from './models';
 
 // ---------------------------------------------------------------------------
 // Provider endpoints (canonical — do not invent)
@@ -27,30 +29,36 @@ export const ATS_ENDPOINTS = {
 
 // ---------------------------------------------------------------------------
 // Rate limiting
+//
+// 2-second delay between calls to the same provider; the External Adapter
+// implements this in the poller, not per adapter.
 // ---------------------------------------------------------------------------
 
 export const ATS_REQUEST_DELAY_MS = 2_000;
-// 2-second delay between calls to the same provider; the External Adapter
-// implements this in the poller, not per adapter.
 
 // ---------------------------------------------------------------------------
 // Adapter interface
 //
-// Each provider exports a singleton conforming to AtsAdapter.
-// Registry: /lib/ats/registry.ts maps AtsProvider -> AtsAdapter instance.
+// Generic over the raw posting type so each provider keeps its own internal
+// shape and normalize() consumes it type-safely. Registry: /lib/ats/registry.ts
+// maps AtsProvider -> AtsAdapter instance.
 // ---------------------------------------------------------------------------
 
-export type RawPosting = unknown;     // provider-specific; only normalize() sees this
-
-// Slot for the subset of fields the adapter actually fills. The poller fills
-// in id, ownerId, watchlistCompanyId, createdAt, status, and (optionally)
-// alignmentScore once Backend Core has scored the row.
+// Slot for the subset of fields the adapter fills. The poller fills in id,
+// ownerId, watchlistCompanyId, createdAt, status, applicationId, and
+// (optionally) alignmentScore once Backend Core has scored the row.
 export type NormalizedPosting = Omit<
-  DiscoveredPosting,
-  'id' | 'ownerId' | 'watchlistCompanyId' | 'createdAt' | 'status' | 'alignmentScore'
+  z.infer<typeof DiscoveredPostingSchema>,
+  | 'id'
+  | 'ownerId'
+  | 'watchlistCompanyId'
+  | 'createdAt'
+  | 'status'
+  | 'alignmentScore'
+  | 'applicationId'
 >;
 
-export interface AtsAdapter {
+export interface AtsAdapter<TRaw = unknown> {
   provider: AtsProvider;
 
   // Returns { valid: true } if the slug resolves to a board with postings.
@@ -59,29 +67,34 @@ export interface AtsAdapter {
 
   // Returns the provider's full list of current postings. Pagination is
   // handled internally by the adapter; callers receive the complete list.
-  fetchPostings(slug: string): Promise<RawPosting[]>;
+  fetchPostings(slug: string): Promise<TRaw[]>;
 
   // Maps one raw posting to a NormalizedPosting. Pure function.
   // externalId is the provider's posting ID (dedup key).
-  normalize(raw: RawPosting): NormalizedPosting & { externalId: string };
+  normalize(raw: TRaw): NormalizedPosting & { externalId: string };
 }
 
 // ---------------------------------------------------------------------------
 // Adapter validation
 //
 // Used in adapter unit tests: each adapter test asserts its normalize()
-// output passes this schema.
+// output passes this schema before the poller commits.
 // ---------------------------------------------------------------------------
 
-export const NormalizedPostingSchema = z.object({
-  externalId: z.string().min(1),
-  company: z.string().min(1),
-  atsProvider: z.enum(['greenhouse', 'lever', 'ashby', 'workday']),
-  role: z.string().min(1),
-  location: z.string().default(''),
-  remote: z.boolean(),
-  postedAt: z.string(),                // ISO date
-  url: z.string().url(),
-  salaryRange: z.string().optional(),
-  jobDescription: z.string().default(''),
-});
+export const NormalizedPostingSchema = z
+  .object({
+    externalId: z.string().min(1),
+    company: z.string().min(1),
+    atsProvider: AtsProviderSchema,
+    role: z.string().min(1),
+    location: z.string().default(''),
+    remote: z.boolean(),
+    postedAt: z.string(),                            // ISO date
+    url: z.string().url(),
+    salaryRange: z.string().optional(),
+    jobDescription: z.string().default(''),
+  })
+  .strict();
+
+// Re-export so adapter tests don't need to import from models.ts directly.
+export { ATS_PROVIDERS };

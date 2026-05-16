@@ -1,0 +1,69 @@
+# Throughline — Architecture
+
+Maintained by every agent. Append to "Dependencies" when introducing a new package in the same commit as the import. Append to "Decisions" when making a load-bearing structural choice that future agents need to know about.
+
+See `Pastel Dawn Core/Core Documents/Developer Guide.md` (vault) for the non-negotiables every dependency must clear.
+
+---
+
+## Stack
+
+| Layer | Tool |
+|---|---|
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript 5 |
+| Styling | Tailwind 4 |
+| Persistence | Prisma + Neon Postgres |
+| Auth | Clerk |
+| Hosting | Vercel |
+| Background jobs | Inngest |
+| Cache + rate limit | Upstash Redis |
+| AI | Anthropic SDK (BYOK, browser-side calls) |
+
+Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale below.
+
+---
+
+## Dependencies
+
+| Package | Justification |
+|---|---|
+| `zod` 3.x | Runtime validation at every API boundary. Imported by all `/contracts/*.ts` schemas and used by Backend Core handlers (Zod `parse()` at request entry), AI Integration (validate every Claude JSON response), and `/lib/mock-api.ts` (boundary parity with the real route). Chosen over io-ts and yup because it is the studio default for TS-first inference; the contracts file requires that one Zod schema be both the validator and the source of truth for the derived TS type. |
+| `next` 15 | Foundation Agent installs on Day 1. Justification for choosing Next over Vite-only: App Router enables the `/app/api/*` routes and middleware that Backend Core and Security Agent rely on, and Vercel deployment is one-step. |
+| `@prisma/client` 5 + `prisma` 5 | Foundation Agent installs on Day 1. Maps `/contracts/models.ts` to Postgres. JSON columns are used for nested SkillsDB shapes per the Decision below. |
+| `@clerk/nextjs` | Foundation Agent installs on Day 1. Justification for choosing Clerk over Firebase Auth: BYOK Anthropic flow is browser-side, server only validates session, and Clerk's middleware integrates with Next.js App Router. |
+| `@anthropic-ai/sdk` | AI Integration Agent installs when starting Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
+| `inngest` | External Adapter Agent installs when starting Day 3. Daily poller for ATS providers. |
+| `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs when starting Day 3. AI prompt-hash cache + sliding-window rate limit. |
+
+Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.
+
+---
+
+## Decisions
+
+### Stack deviates from Pastel Dawn default (Firebase / Vite)
+
+**Why:** Throughline's Day 5 integration plan depends on a server-rendered Next.js App Router app: `/app/api/*` handlers under Backend Core, middleware under Security, server-only utilities under `/lib/server/`. Firebase Functions could host the API surface but the App Router co-location of pages + route handlers materially simplifies Frontend Agent's swap from `/lib/mock-api.ts` to `/lib/api-client.ts`. Postgres (via Neon) was preferred over Firestore because the schema in `/contracts/models.ts` is relational, and a SQL planner makes the discovery feed's "rank by alignmentScore" trivially indexable.
+
+**Cost:** This is the first Pastel Dawn project on this stack. Onboarding a future agent into the stack costs more than reusing the Firebase playbook would have.
+
+**Mitigation:** The role files in `.claude-roles/` are kit-agnostic; the kit at `Pastel Dawn Core/_Templates/multi-agent-orchestration/` can be reused on Firebase projects in the future.
+
+### Zod schemas live in `/contracts/models.ts`, not `/contracts/api.ts`
+
+**Why:** Some shapes are BOTH persisted on a row AND returned by an API (most importantly `AlignmentAnalysis`, which is embedded on `Application` and returned by `/api/alignment`). Defining the Zod schema once in `models.ts` and re-exporting from `api.ts` prevents drift between the persisted snapshot and the API response.
+
+### SkillsDB nested JSON, not relational
+
+**Why:** `SkillsDB.jobs` and `Job.projects` are always read together and never queried independently. Foundation Agent translates `SkillsDB` to a Prisma row with `jobs Json` rather than three normalized tables. Project and Job IDs follow `P\d+` / `J\d+` patterns validated at the Zod boundary, so a malicious update payload cannot inject arbitrary nested rows.
+
+**Cost:** Cannot query "all candidates with a project at Stripe" without a JSON scan. Acceptable — that query doesn't exist in the product surface.
+
+### `AlignmentAnalysis` is the single source of truth for both persisted snapshot and API response
+
+**Why:** Original Day 0 work had two diverging declarations. The reviewer caught the drift in PR #2.
+
+### `__MOCK_MODE__` sentinel in `lib/mock-api.ts`
+
+**Why:** `scripts/integrate.sh status` greps for the literal token to report sprint vs live mode. Don't remove it from the file even if TS lint flags it as unused.

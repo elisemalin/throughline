@@ -23,10 +23,11 @@ VIOLATIONS=0
 # ---------------------------------------------------------------------------
 # File set under inspection
 # ---------------------------------------------------------------------------
+FILES=()
 if [[ "$MODE" == "--diff" ]]; then
-  mapfile -t FILES < <(git diff --name-only --diff-filter=AM origin/main...HEAD -- '*.ts' '*.tsx' 2>/dev/null || true)
+  while IFS= read -r line; do FILES+=("$line"); done < <(git diff --name-only --diff-filter=AM origin/main...HEAD -- '*.ts' '*.tsx' 2>/dev/null || true)
 else
-  mapfile -t FILES < <(git ls-files '*.ts' '*.tsx')
+  while IFS= read -r line; do FILES+=("$line"); done < <(git ls-files '*.ts' '*.tsx')
 fi
 
 if [[ ${#FILES[@]} -eq 0 ]]; then
@@ -129,9 +130,9 @@ fi
 # Rule 9 — Server-never-stores list
 # ---------------------------------------------------------------------------
 grep_within \
-  '^(app/api/|lib/server/|lib/db/)' \
-  "(console\.(log|info|error)\(.*\b(apiKey|prompt|completion)\b|prisma\..*\.create\(.*\b(apiKey|prompt|completion)\b)" \
-  "Server code appears to log or persist key/prompt/completion (review SERVER_NEVER_STORES)"
+  '^(app/api/|lib/server/|lib/db/|lib/ai/)' \
+  "(console\.(log|info|error)\(.*\b(apiKey|anthropicKey|prompt|completion|resumeText|linkedinText|passphrase|kdfKey|apiKeyIv|apiKeySalt)\b|prisma\..*\.create\(.*\b(apiKey|anthropicKey|prompt|completion|resumeText|linkedinText|passphrase|kdfKey|apiKeyIv|apiKeySalt)\b)" \
+  "Server code appears to log or persist key/prompt/completion/passphrase material (review SERVER_NEVER_STORES_GREP_TOKENS in /contracts/storage.ts)"
 
 # ---------------------------------------------------------------------------
 # Rule 10 — Frontend owns /lib/mock-api.ts

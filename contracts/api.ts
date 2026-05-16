@@ -1,195 +1,228 @@
 // contracts/api.ts
 //
-// API endpoint contracts. Every key in API_ROUTES maps 1:1 to a handler
+// API endpoint contracts. Every entry in API_ROUTES maps 1:1 to a handler
 // under /app/api/*; Backend Core implements the handler, Frontend Agent
 // imports the types via /lib/mock-api during the parallel sprint and via
 // the real fetch layer after integration.
 //
-// Every request schema is exported as a Zod validator AND as a derived
-// TypeScript type. Handlers use the validator at the boundary; callers use
-// the type. Do not redefine these shapes elsewhere.
+// Routes carry an explicit HTTP method so collection endpoints can share a
+// path (e.g. GET /api/applications + POST /api/applications) without
+// collapsing in a path-keyed record.
+//
+// Every request body is exported as a Zod validator AND a derived TS type.
+// Handlers use the validator at the boundary; callers use the type. Do not
+// redefine these shapes elsewhere.
 
 import { z } from 'zod';
+import {
+  AlignmentAnalysisSchema,
+  AlignmentAnalysis,
+  ApplicationSchema,
+  ApplicationStatusSchema,
+  ApplicationEventSchema,
+  ATS_PROVIDERS,
+  AtsProviderSchema,
+  ContactSchema,
+  DiscoveryStatusSchema,
+  DocumentKindSchema,
+  DocumentSchema,
+  JobSchema,
+  ProjectSchema,
+  SkillsDBSchema,
+  WatchlistCompanySchema,
+  DiscoveredPostingSchema,
+} from './models';
 import type {
   Application,
-  ApplicationStatus,
+  ApplicationEvent,
   AtsProvider,
   DiscoveredPosting,
-  DiscoveryStatus,
   Document,
-  DocumentKind,
   SkillsDB,
   WatchlistCompany,
-} from './models';
-import {
-  APPLICATION_STATUSES,
-  ATS_PROVIDERS,
-  DOCUMENT_KINDS,
-  DISCOVERY_STATUSES,
 } from './models';
 
 // ---------------------------------------------------------------------------
 // Route registry
+//
+// Shape: { method, path }. Backend Core mounts handlers off this registry.
+// Frontend uses the path for fetch construction post-integration; pre-
+// integration, callers reference the type-bound mock-api function instead.
 // ---------------------------------------------------------------------------
+
+export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
+export type RouteDef = { method: HttpMethod; path: string };
 
 export const API_ROUTES = {
   // AI generation
-  alignment: '/api/alignment',
-  resume: '/api/documents/resume',
-  coverLetter: '/api/documents/cover-letter',
-  ninetyDayPlan: '/api/documents/ninety-day-plan',
-  dossier: '/api/documents/dossier',
-  mockInterview: '/api/interviews/mock',
-  skillsIngest: '/api/skills/ingest',
+  alignment:            { method: 'POST',   path: '/api/alignment' },
+  resume:               { method: 'POST',   path: '/api/documents/resume' },
+  coverLetter:          { method: 'POST',   path: '/api/documents/cover-letter' },
+  ninetyDayPlan:        { method: 'POST',   path: '/api/documents/ninety-day-plan' },
+  dossier:              { method: 'POST',   path: '/api/documents/dossier' },
+  mockInterview:        { method: 'POST',   path: '/api/interviews/mock' },
+  skillsIngest:         { method: 'POST',   path: '/api/skills/ingest' },
 
   // Application CRUD
-  applicationList: '/api/applications',
-  applicationCreate: '/api/applications',
-  applicationUpdate: '/api/applications/:id',
-  applicationDelete: '/api/applications/:id',
+  applicationList:      { method: 'GET',    path: '/api/applications' },
+  applicationCreate:    { method: 'POST',   path: '/api/applications' },
+  applicationUpdate:    { method: 'PATCH',  path: '/api/applications/:id' },
+  applicationDelete:    { method: 'DELETE', path: '/api/applications/:id' },
+  applicationEventList: { method: 'GET',    path: '/api/applications/:id/events' },
 
   // Document CRUD
-  documentList: '/api/documents',
-  documentDelete: '/api/documents/:id',
+  documentList:         { method: 'GET',    path: '/api/documents' },
+  documentDelete:       { method: 'DELETE', path: '/api/documents/:id' },
 
   // Skills
-  skillsRead: '/api/skills',
-  skillsUpdate: '/api/skills',
+  skillsRead:           { method: 'GET',    path: '/api/skills' },
+  skillsUpdate:         { method: 'PATCH',  path: '/api/skills' },
 
   // Watchlist + Discovery
-  watchlistList: '/api/watchlist',
-  watchlistAdd: '/api/watchlist',
-  watchlistRemove: '/api/watchlist/:id',
-  discoveryList: '/api/discovery',
-  discoveryPoll: '/api/discovery/poll',
-  discoveryUpdateStatus: '/api/discovery/:id',
-} as const;
+  watchlistList:        { method: 'GET',    path: '/api/watchlist' },
+  watchlistAdd:         { method: 'POST',   path: '/api/watchlist' },
+  watchlistRemove:      { method: 'DELETE', path: '/api/watchlist/:id' },
+  discoveryList:        { method: 'GET',    path: '/api/discovery' },
+  discoveryPoll:        { method: 'POST',   path: '/api/discovery/poll' },
+  discoveryUpdate:      { method: 'PATCH',  path: '/api/discovery/:id' },
+} as const satisfies Record<string, RouteDef>;
 
 export type ApiRoute = keyof typeof API_ROUTES;
-
-// ---------------------------------------------------------------------------
-// Shared validators
-// ---------------------------------------------------------------------------
-
-const ApplicationStatusEnum = z.enum(APPLICATION_STATUSES);
-const DocumentKindEnum = z.enum(DOCUMENT_KINDS);
-const AtsProviderEnum = z.enum(ATS_PROVIDERS);
-const DiscoveryStatusEnum = z.enum(DISCOVERY_STATUSES);
 
 // ---------------------------------------------------------------------------
 // POST /api/alignment
 // ---------------------------------------------------------------------------
 
-export const AlignmentRequestSchema = z.object({
-  jobDescription: z.string().min(1).max(50_000),
-  // skillsDB is resolved server-side from the authenticated session;
-  // the client does not send it.
-});
+export const AlignmentRequestSchema = z
+  .object({
+    jobDescription: z.string().min(1).max(50_000),
+    // skillsDB is resolved server-side from the authenticated session; the
+    // client does not send it. Mock implementations resolve it from a shared
+    // fixture so the call signature is identical to the live route.
+  })
+  .strict();
 export type AlignmentRequest = z.infer<typeof AlignmentRequestSchema>;
 
-export const AlignmentResponseSchema = z.object({
-  score: z.number().int().min(0).max(100),
-  requirements: z.array(
-    z.object({
-      requirement: z.string(),
-      strength: z.number().min(0).max(10),
-      type: z.enum(['strong', 'partial', 'missing']),
-      evidence: z.string(),
-      recommendation: z.string(),
-    }),
-  ),
-  missingKeywords: z.array(z.string()).max(20),
-  recommendation: z.string(),
-});
-export type AlignmentResponse = z.infer<typeof AlignmentResponseSchema>;
+// AlignmentResponse is the same shape as the persisted AlignmentAnalysis.
+// Single source of truth: models.ts.
+export const AlignmentResponseSchema = AlignmentAnalysisSchema;
+export type AlignmentResponse = AlignmentAnalysis;
 
 // ---------------------------------------------------------------------------
 // Document generation: shared response
 // ---------------------------------------------------------------------------
 
-export const DocumentResponseSchema = z.object({
-  kind: DocumentKindEnum,
-  title: z.string(),
-  body: z.string(),                    // markdown
-  createdAt: z.string(),               // ISO 8601
-  applicationId: z.string().optional(),
-});
+export const DocumentResponseSchema = z
+  .object({
+    kind: DocumentKindSchema,
+    title: z.string(),
+    body: z.string(),
+    createdAt: z.string(),
+    applicationId: z.string().optional(),
+  })
+  .strict();
 export type DocumentResponse = z.infer<typeof DocumentResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/documents/resume
 // ---------------------------------------------------------------------------
 
-export const ResumeRequestSchema = z.object({
-  applicationId: z.string().optional(),
-});
+export const ResumeRequestSchema = z
+  .object({
+    applicationId: z.string().optional(),
+  })
+  .strict();
 export type ResumeRequest = z.infer<typeof ResumeRequestSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/documents/cover-letter
 // ---------------------------------------------------------------------------
 
-export const CoverLetterRequestSchema = z.object({
-  applicationId: z.string(),           // cover letters require a target application
-  customNotes: z.string().max(2_000).optional(),
-});
+export const CoverLetterRequestSchema = z
+  .object({
+    applicationId: z.string(),
+    customNotes: z.string().max(2_000).optional(),
+  })
+  .strict();
 export type CoverLetterRequest = z.infer<typeof CoverLetterRequestSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/documents/ninety-day-plan
 // ---------------------------------------------------------------------------
 
-export const NinetyDayRequestSchema = z.object({
-  applicationId: z.string(),
-});
+export const NinetyDayRequestSchema = z
+  .object({
+    applicationId: z.string(),
+  })
+  .strict();
 export type NinetyDayRequest = z.infer<typeof NinetyDayRequestSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/documents/dossier
 // ---------------------------------------------------------------------------
 
-export const DossierRequestSchema = z.object({
-  applicationId: z.string(),
-});
+export const DossierRequestSchema = z
+  .object({
+    applicationId: z.string(),
+  })
+  .strict();
 export type DossierRequest = z.infer<typeof DossierRequestSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/interviews/mock
 //
 // Multi-turn. Client sends the running chat history; server returns the next
-// interviewer turn. No server-side session state — Frontend owns the
-// transcript.
+// interviewer turn. An empty transcript is the start-of-interview signal —
+// server returns an opening question. After ~10 turns the server may set
+// `done: true` to signal wrap-up.
 // ---------------------------------------------------------------------------
 
-export const MockInterviewTurnSchema = z.object({
-  role: z.enum(['interviewer', 'user']),
-  text: z.string(),
-});
+export const MockInterviewTurnSchema = z
+  .object({
+    role: z.enum(['interviewer', 'user']),
+    text: z.string(),
+  })
+  .strict();
 export type MockInterviewTurn = z.infer<typeof MockInterviewTurnSchema>;
 
-export const MockInterviewRequestSchema = z.object({
-  applicationId: z.string(),
-  transcript: z.array(MockInterviewTurnSchema).max(200),
-});
+export const MockInterviewRequestSchema = z
+  .object({
+    applicationId: z.string(),
+    transcript: z.array(MockInterviewTurnSchema).max(200),
+  })
+  .strict();
 export type MockInterviewRequest = z.infer<typeof MockInterviewRequestSchema>;
 
-export const MockInterviewResponseSchema = z.object({
-  next: MockInterviewTurnSchema,        // always role='interviewer'
-});
+export const MockInterviewResponseSchema = z
+  .object({
+    next: z
+      .object({
+        role: z.literal('interviewer'),
+        text: z.string().min(1).max(2_000),
+      })
+      .strict(),
+    done: z.boolean().default(false),
+  })
+  .strict();
 export type MockInterviewResponse = z.infer<typeof MockInterviewResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // POST /api/skills/ingest
+//
+// Resume / LinkedIn text is untrusted user input. AI Integration wraps it in
+// <UNTRUSTED_INPUT> tags before sending to Claude (see /contracts/ai.ts
+// INGEST_SYSTEM). The schema here only enforces length bounds.
 // ---------------------------------------------------------------------------
 
-export const SkillsIngestRequestSchema = z.object({
-  resumeText: z.string().min(50).max(50_000),
-  linkedinText: z.string().max(50_000).optional(),
-});
+export const SkillsIngestRequestSchema = z
+  .object({
+    resumeText: z.string().min(1).max(50_000),
+    linkedinText: z.string().max(50_000).optional(),
+  })
+  .strict();
 export type SkillsIngestRequest = z.infer<typeof SkillsIngestRequestSchema>;
 
-// Response references the SkillsDB type from models.ts; the AI workflow
-// returns a Zod-validated SkillsDB shape (see /contracts/ai.ts).
 export type SkillsIngestResponse = {
   skillsDB: SkillsDB;
   warnings: string[];
@@ -199,27 +232,30 @@ export type SkillsIngestResponse = {
 // Application CRUD
 // ---------------------------------------------------------------------------
 
-export const ApplicationCreateSchema = z.object({
-  company: z.string().min(1),
-  role: z.string().min(1),
-  url: z.string().url().optional(),
-  source: z.string().optional(),
-  location: z.string().optional(),
-  remote: z.boolean().default(false),
-  salaryRange: z.string().optional(),
-  jobDescription: z.string().max(50_000).optional(),
-  status: ApplicationStatusEnum.default('researching'),
-  appliedDate: z.string().optional(),
-  followUpDate: z.string().optional(),
-  notes: z.string().optional(),
-  alignmentScore: z.number().int().min(0).max(100).optional(),
-});
+// ApplicationCreate is the persisted Application minus server-set fields.
+// `.strict()` rejects unknown keys so a malicious client cannot inject
+// ownerId/id at create time.
+export const ApplicationCreateSchema = ApplicationSchema.omit({
+  id: true,
+  ownerId: true,
+  alignmentAnalysis: true,
+  createdAt: true,
+  updatedAt: true,
+})
+  .extend({
+    // alignmentAnalysis can be supplied at create time if the client ran
+    // /api/alignment first and wants to snapshot it onto the row.
+    alignmentAnalysis: AlignmentAnalysisSchema.optional(),
+  })
+  .strict();
 export type ApplicationCreate = z.infer<typeof ApplicationCreateSchema>;
 
-export const ApplicationUpdateSchema = ApplicationCreateSchema.partial();
+export const ApplicationUpdateSchema = ApplicationCreateSchema.partial().strict();
 export type ApplicationUpdate = z.infer<typeof ApplicationUpdateSchema>;
 
 export type ApplicationListResponse = { applications: Application[] };
+
+export type ApplicationEventListResponse = { events: ApplicationEvent[] };
 
 // ---------------------------------------------------------------------------
 // Document CRUD
@@ -229,40 +265,32 @@ export type DocumentListResponse = { documents: Document[] };
 
 // ---------------------------------------------------------------------------
 // Skills read/update
+//
+// SkillsUpdate accepts a partial SkillsDB, validated nested. The nested
+// schemas in models.ts are `.strict()` so a client cannot smuggle extra
+// fields into the JSON column.
 // ---------------------------------------------------------------------------
 
 export type SkillsReadResponse = { skillsDB: SkillsDB | null };
 
-// SkillsUpdateSchema validates a partial SkillsDB. Excludes id/ownerId/updatedAt
-// which the server sets. Kept lenient (passthrough) for nested job/project
-// edits; tightening this is a contract proposal.
-export const SkillsUpdateSchema = z
-  .object({
-    fullName: z.string().optional(),
-    headline: z.string().optional(),
-    positioning: z.string().optional(),
-    contact: z.record(z.string()).optional(),
-    targetRoles: z.array(z.string()).optional(),
-    awards: z.array(z.string()).optional(),
-    jobs: z.array(z.record(z.unknown())).optional(),
-    coreSkills: z.array(z.string()).optional(),
-    tools: z.array(z.string()).optional(),
-    methods: z.array(z.string()).optional(),
-    domains: z.array(z.string()).optional(),
-    keywords: z.array(z.string()).optional(),
-  })
-  .passthrough();
+export const SkillsUpdateSchema = SkillsDBSchema.omit({
+  id: true,
+  ownerId: true,
+  updatedAt: true,
+}).partial().strict();
 export type SkillsUpdate = z.infer<typeof SkillsUpdateSchema>;
 
 // ---------------------------------------------------------------------------
 // Watchlist + Discovery
 // ---------------------------------------------------------------------------
 
-export const WatchlistAddSchema = z.object({
-  company: z.string().min(1),
-  atsProvider: AtsProviderEnum,
-  atsSlug: z.string().min(1),
-});
+export const WatchlistAddSchema = z
+  .object({
+    company: z.string().min(1),
+    atsProvider: AtsProviderSchema,
+    atsSlug: z.string().min(1),
+  })
+  .strict();
 export type WatchlistAddRequest = z.infer<typeof WatchlistAddSchema>;
 
 export type WatchlistAddResponse = {
@@ -280,7 +308,24 @@ export type DiscoveryPollResponse = {
   polledAt: string;
 };
 
-export const DiscoveryUpdateStatusSchema = z.object({
-  status: DiscoveryStatusEnum,
-});
-export type DiscoveryUpdateStatusRequest = z.infer<typeof DiscoveryUpdateStatusSchema>;
+// Discovery transitions can attach the resulting applicationId when status
+// becomes 'drafted' so the Discovery view can deep-link to the Application.
+export const DiscoveryUpdateSchema = z
+  .object({
+    status: DiscoveryStatusSchema,
+    applicationId: z.string().optional(),
+  })
+  .strict();
+export type DiscoveryUpdateRequest = z.infer<typeof DiscoveryUpdateSchema>;
+
+// ---------------------------------------------------------------------------
+// Re-export the nested schemas so consumers can validate sub-payloads
+// without reaching into models.ts.
+// ---------------------------------------------------------------------------
+
+export {
+  ContactSchema,
+  ProjectSchema,
+  JobSchema,
+  AlignmentAnalysisSchema,
+};
