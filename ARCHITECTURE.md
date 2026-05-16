@@ -85,3 +85,37 @@ Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint
 **Why:** The grep token list was narrowed (removed `prompt`, `completion`) to eliminate false-positives on SYSTEM constants. The textual `SERVER_NEVER_STORES` policy still says "raw prompts" and "raw Claude responses" are never persisted — but the integrity script no longer enforces those specific words. The gap is intentional: prompt/completion enforcement moves from grep to Security Agent's PR-level adversarial review.
 
 **For Security Agent:** treat any new code under `/app/api/`, `/lib/server/`, `/lib/db/`, or `/lib/ai/` that touches assembled user-message content or Claude response bodies as a manual review item. Log statements and DB writes that name those values should be flagged regardless of token spelling.
+
+---
+
+## Day 1 deliverables (Foundation Agent)
+
+Shipped on branch `agent/foundation/d1`:
+
+- Next.js 15 App Router scaffold (`app/layout.tsx`, `app/page.tsx`, `app/globals.css`).
+- Clerk auth wired: `middleware.ts`, `app/(auth)/sign-in/[[...sign-in]]/page.tsx`, `app/(auth)/sign-up/[[...sign-up]]/page.tsx`.
+- Prisma schema at `prisma/schema.prisma` translating `/contracts/models.ts` line-by-line. `Application.alignmentScore` is intentionally NOT a column (derived read-side per the Decisions section above). `Job.endDate` is nullable inside the `SkillsDB.jobs` JSON. `SkillsDB.jobs` and `Application.alignmentAnalysis` are `Json` columns.
+- Prisma client singleton at `lib/db/prisma.ts` with HMR-safe globalThis cache.
+- Tailwind 4 with `tailwind.config.ts` loaded via `@config` in `app/globals.css`. Palette: stone-950 surface, amber-200 accent.
+- Fonts via `next/font/google`: Instrument Serif (display), JetBrains Mono (data), DM Sans (UI). CSS variables exposed to Tailwind.
+- CI at `.github/workflows/ci.yml`: corepack, pnpm install, prisma generate, typecheck, lint, full integrity, diff integrity on PR. No DB-dependent steps on Day 1.
+- Playwright smoke at `tests/smoke/auth.spec.ts` + `playwright.config.ts`. Single placeholder asserts sign-in renders.
+- `.env.example` enumerates every env var with no values.
+
+### Day 1 Dependencies sub-table
+
+Each entry's one-line justification:
+
+| Package | Why |
+|---|---|
+| `next` 15.5.18 | App Router scaffold; the framework the whole product runs on. |
+| `react` / `react-dom` 19.2.6 | Required peer for Next 15. |
+| `typescript` 5.9.3 | Strict TS is studio default; required by the `.ts` contracts. |
+| `@prisma/client` + `prisma` 5.22.0 | Persistence layer per ARCHITECTURE.md. |
+| `@clerk/nextjs` 6.39.3 | Auth per ARCHITECTURE.md; pairs with Next 15 App Router middleware. |
+| `zod` 3.23.8 | Already required by `/contracts/*.ts`; pinned at workspace root. |
+| `tailwindcss` 4.2.4 + `@tailwindcss/postcss` 4.2.4 | Styling per ARCHITECTURE.md. JS config loaded via `@config` directive in `app/globals.css` so design tokens stay in a single TS file. Pinned to 4.2.4 because 4.0.0 ships an older oxide scanner API incompatible with the Next 15.5 css-loader (`Missing field 'negated' on ScannerOptions.sources`). |
+| `autoprefixer` 10.4.20 + `postcss` 8.4.49 | Postcss pipeline required by Tailwind 4's PostCSS plugin; autoprefixer covers vendor prefixes not yet handled by the engine. |
+| `eslint` 9 + `eslint-config-next` 15.5.18 | Lint preset that matches the Next major; CI gate. |
+| `@playwright/test` 1.60.0 | Smoke harness. Day 1 ships one placeholder spec. |
+| `@types/node` / `@types/react` / `@types/react-dom` | Type-only deps required by TS strict mode against Next 15 and Node 22. |
