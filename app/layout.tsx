@@ -39,13 +39,10 @@ export const metadata: Metadata = {
   description: 'A job-search OS for skills, applications, and discovery.',
 };
 
-// WHY: Every route in this app is gated behind a Clerk session (see
-// middleware.ts), so prerender-time static optimization has no genuine
-// static content to produce — and Clerk's provider throws at SSG when the
-// publishable key isn't available. `force-dynamic` at the root layout opts
-// the entire tree into request-time rendering, which matches the product's
-// actual access pattern and lets `next build` succeed before Clerk env vars
-// land in production.
+// Clerk's provider throws at SSG when the publishable key isn't available,
+// and the public routes have no value to prerender (sign-in is a
+// Clerk-hosted form, landing immediately redirects). force-dynamic at the
+// root opts the whole tree into request-time rendering.
 export const dynamic = 'force-dynamic';
 
 export default function RootLayout({
