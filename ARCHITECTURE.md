@@ -35,6 +35,7 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 | `@anthropic-ai/sdk` | AI Integration Agent installs when starting Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
 | `inngest` | External Adapter Agent installs when starting Day 3. Daily poller for ATS providers. |
 | `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs when starting Day 3. AI prompt-hash cache + sliding-window rate limit. |
+| `vitest` 2.x | Backend Core installs on Day 2 to back `pnpm test:api`. Chosen over Jest because vitest's Vite-compatible config resolves the `@/*` alias the same way Next.js does (via a one-line `resolve.alias`), and module mocking via `vi.mock` is hoisted, which keeps each route's three-scenario test file under ~80 lines. Manual `path.resolve` alias rather than `vite-tsconfig-paths` because that plugin is ESM-only and vitest 2.x loads its config via `require()`. |
 
 Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.
 
@@ -104,6 +105,44 @@ Every Prisma row that leaves an `app/api/*` route as part of a response goes thr
 
 **For Security Agent:** treat any new code under `/app/api/`, `/lib/server/`, `/lib/db/`, or `/lib/ai/` that touches assembled user-message content or Claude response bodies as a manual review item. Log statements and DB writes that name those values should be flagged regardless of token spelling.
 
+### Backend Core handler shape
+
+**Why:** Day 2 ships 19 route files across `/app/api/*`. Every handler runs the same prelude — gate the Clerk session, parse the request body, run the request through the Zod schema in `/contracts/api.ts`, then talk to Prisma. Drift across that prelude is the single largest review-load risk for the API surface; reviewers cannot diff 19 hand-rolled auth checks. The shape below is what every handler MUST follow.
+
+**Rule:**
+
+```ts
+export async function POST(req: Request) {
+  const gate = await requireUserId();          // /lib/server/auth.ts
+  if (gate instanceof Response) return gate;   // 401 short-circuit
+  const userId = gate;
+
+  const body = await readJson(req);            // /lib/server/response.ts
+  if (body instanceof Response) return body;   // 400 invalid_json
+
+  const parsed = SomeRequestSchema.safeParse(body);
+  if (!parsed.success) return fromZodError(parsed.error);  // 400 invalid_request
+
+  // ... Prisma + AI/ATS calls ...
+
+  return NextResponse.json(SomeResponseSchema.parse(result));
+}
+```
+
+The split-return shape (helper returns either `Response` or a typed value) keeps handlers flat — no `try/catch`, no nullable `userId` leaking into Prisma calls. `fromZodError` projects the issues array into a structured `{ error: { code, message, details } }` body so the Frontend renders one error shape regardless of which route fired.
+
+### Day-2 Backend Core handler upserts SkillsDB on ingest
+
+**Why:** `prisma.skillsDB` carries `@unique(ownerId)`. A user re-running `/api/skills/ingest` would otherwise hit a P2002 unique-constraint error on the second call. Backend Core uses `upsert` so a repeat ingest replaces the prior structured DB rather than crashing, with the AI workflow's parsed shape as both the `create` and the `update` payload.
+
+### Day-2 Mock-first: `lib/ai/__mock__/*` and `lib/ats/__mock__/*` are placeholders, not abstractions
+
+**Why:** Backend Core's Day-2 PR ships `lib/ai/index.ts` and `lib/ats/registry.ts` as Day-2 placeholders that re-export from sibling `__mock__/` files. AI Integration's Day-2 PR and External Adapter's Day-3 PR overwrite those public surfaces with real implementations and delete the `__mock__/` directories. Backend Core never imports from `__mock__/` directly — only via the public surface — so the swap happens with zero edits to handler code or tests.
+
+**For AI Integration:** when your PR lands, delete `/lib/ai/__mock__/` and overwrite `/lib/ai/index.ts` with your real workflow exports. The handler-side import paths stay identical (`runAlignment`, `runResume`, `runCoverLetter`, `runNinetyDay`, `runDossier`, `runMockInterview`, `runIngest`, `MOCK_INGEST_WARNINGS` — the last one becomes a regular `warnings` return value on the workflow output).
+
+**For External Adapter:** same pattern — delete `/lib/ats/__mock__/`, overwrite `/lib/ats/registry.ts` keeping `getAdapter(provider)` and `triggerPoll(ownerId)` exports.
+
 ---
 
 ## Day 1 deliverables (Foundation Agent)
@@ -137,3 +176,22 @@ Each entry's one-line justification:
 | `eslint` ^8.x + `eslint-config-next` 15.5.18 | Lint preset that matches the Next major; CI gate. eslint pinned to ^8.x because next-eslint config is still legacy-format; flat-config migration deferred to a separate proposal. |
 | `@playwright/test` 1.60.0 | Smoke harness. Day 1 ships one placeholder spec. |
 | `@types/node` / `@types/react` / `@types/react-dom` | Type-only deps required by TS strict mode against Next 15 and Node 22. |
+
+---
+
+## Day 2 deliverables (Backend Core Agent)
+
+Shipped on branch `agent/backend-core/d2`:
+
+- 19 route files under `/app/api/*` — one handler per entry in `API_ROUTES` from `/contracts/api.ts`. Every handler uses the prelude shape documented in the Decisions section above (Clerk gate, JSON parse, Zod validation, Prisma I/O, contract-shape response).
+- Server-side helpers under `/lib/server/`: `auth.ts` (Clerk `requireUserId`), `response.ts` (`jsonError`, `fromZodError`, `readJson`), `skills.ts` (projected SkillsDB read).
+- Day-2 placeholder AI namespace at `/lib/ai/index.ts` re-exporting from `/lib/ai/__mock__/*`. Covers all seven workflows (alignment, resume, cover-letter, ninety-day, dossier, mock-interview, ingest). AI Integration overwrites this on their Day-2 PR.
+- Day-2 placeholder ATS registry at `/lib/ats/registry.ts` + `/lib/ats/__mock__/adapter.ts`. Exposes `getAdapter(provider)` and `triggerPoll(ownerId)`. External Adapter overwrites this on their Day-3 PR.
+- Vitest integration tests under `/tests/api/`: 15 test files, 68 tests. Every route in `API_ROUTES` has at least one test asserting (a) 401 without a Clerk session, (b) 400 on invalid request shape, and (c) the response body parses against its contract Zod schema. Prisma and Clerk are mocked via `vi.mock` in `tests/api/_setup.ts`.
+- `vitest.config.ts` + `pnpm test:api` script.
+
+### Day 2 Dependencies sub-table
+
+| Package | Why |
+|---|---|
+| `vitest` 2.1.9 | Backend Core's `pnpm test:api` runner. Sits alongside Playwright (smoke) so unit/integration and end-to-end harnesses can move independently. Pinned at 2.1.9 because vitest 3.x's vite peer dep moves past the version pnpm currently has cached for the workspace. |

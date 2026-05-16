@@ -2,6 +2,29 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/backend-core/d2] — 2026-05-16
+
+### Added
+- 19 route handlers under `/app/api/*` covering every entry in `API_ROUTES` from `/contracts/api.ts`: AI generation (`alignment`, `documents/resume`, `documents/cover-letter`, `documents/ninety-day-plan`, `documents/dossier`, `interviews/mock`, `skills/ingest`), Application CRUD + `[id]/events` + `[id]/alignment`, Document list/delete, Skills read/patch, Watchlist list/add/remove, Discovery list/poll/update. Each handler: Clerk session gate (401), Zod parse against the contract schema (400 on invalid shape), Prisma I/O, contract-shape response.
+- Server-side helpers at `lib/server/`: `auth.ts` (`requireUserId` short-circuit), `response.ts` (`jsonError` / `fromZodError` / `readJson`), `skills.ts` (`readSkillsDB` projector).
+- Day-2 mock AI namespace at `lib/ai/__mock__/{alignment,documents,mock-interview,ingest}.ts` re-exported via `lib/ai/index.ts`. Mock returns contract-shape outputs so Backend Core handlers exercise their full Prisma + projection paths.
+- Day-2 mock ATS registry at `lib/ats/__mock__/adapter.ts` + `lib/ats/registry.ts` exposing `getAdapter(provider)` and `triggerPoll(ownerId)`.
+- Integration tests under `tests/api/`: 15 files, 68 tests. Each route surface has at least one test for unauthenticated (401), invalid body (400), and contract-shape response.
+- `vitest.config.ts` + `pnpm test:api` script. Manual `@/` alias resolves to repo root (no `vite-tsconfig-paths` — that plugin is ESM-only and vitest 2.x loads its config via require()).
+
+### Changed
+- `ARCHITECTURE.md`: added the `vitest` Dependencies row; added "Backend Core handler shape", "Day-2 Backend Core handler upserts SkillsDB on ingest", "Day-2 Mock-first" Decisions; appended a "Day 2 deliverables (Backend Core Agent)" section.
+- `package.json`: added `test:api` script + `vitest` devDep.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` and `/lib/mock-api.ts` untouched.
+
+### Carried over
+- The dossier route's `web_search` integration is pending AI Integration's Day-2 PR (Day-2 mock returns a structured placeholder body).
+- Real adapter implementations under `/lib/ats/<provider>.ts` are External Adapter's Day-3 deliverable; Backend Core's `lib/ats/registry.ts` will be overwritten by that PR.
+- JIT User row provisioning on first authenticated request is deferred to the Clerk webhook handler (TODO already noted in `middleware.ts`); Day-2 tests mock Prisma, so the FK path is exercised only at integration time.
+
+
 ## [agent/foundation/d1] — 2026-05-16
 
 ### Added
