@@ -1,21 +1,23 @@
-import { defineConfig } from 'vitest/config';
-import path from 'node:path';
+// Vitest config — shared across all test suites (security, ai, ats).
+//
+// WHY env=node: tests exercise Node's built-in SubtleCrypto (Node 22) and
+// pure server code. Path alias `@/*` mirrors tsconfig.json so the same
+// import shape works at runtime in the test runner as in the app.
 
-// Vitest config for the External Adapter's unit + integration suites.
-// The `@/*` path alias is duplicated here from tsconfig.json because Vitest
-// does not parse tsconfig paths without an extra plugin (vite-tsconfig-paths),
-// and FLOOR.md rule 4 requires a justification for every added dependency.
-// Hard-coding one alias is cheaper than adding a package.
+import path from 'node:path';
+import { defineConfig } from 'vitest/config';
+
 export default defineConfig({
+  test: {
+    environment: 'node',
+    include: ['tests/security/**/*.test.ts', 'tests/ai/**/*.test.ts', 'tests/ats/**/*.test.ts'],
+    globals: false,
+    pool: 'forks',
+    testTimeout: 30_000,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
     },
-  },
-  test: {
-    include: ['tests/ats/**/*.test.ts'],
-    environment: 'node',
-    globals: false,
-    testTimeout: 30_000,
   },
 });

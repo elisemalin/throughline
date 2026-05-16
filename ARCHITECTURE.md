@@ -32,10 +32,11 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 | `next` 15 | Foundation Agent installs on Day 1. Justification for choosing Next over Vite-only: App Router enables the `/app/api/*` routes and middleware that Backend Core and Security Agent rely on, and Vercel deployment is one-step. |
 | `@prisma/client` 5 + `prisma` 5 | Foundation Agent installs on Day 1. Maps `/contracts/models.ts` to Postgres. JSON columns are used for nested SkillsDB shapes per the Decision below. |
 | `@clerk/nextjs` | Foundation Agent installs on Day 1. Justification for choosing Clerk over Firebase Auth: BYOK Anthropic flow is browser-side, server only validates session, and Clerk's middleware integrates with Next.js App Router. |
-| `@anthropic-ai/sdk` | AI Integration Agent installs when starting Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
+| `@anthropic-ai/sdk` | AI Integration Agent installs on Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
 | `inngest` 3.27.4 | External Adapter Agent installs on Day 2. Daily ATS poller runs as an Inngest scheduled function (`jobs/poll.ts`); the client lives in `jobs/inngest.ts`. Pinned to 3.27.4 because 3.28+ requires the Next 15 App Router handler shape Backend Core has not yet wired. |
-| `vitest` 2.1.9 | External Adapter Agent installs on Day 2. Unit harness for `tests/ats/**` (adapter normalize() + validateSlug() against captured fixtures, plus the integration test gated on ATS_INTEGRATION=1). Picked over jest because vitest runs against the TS source directly without a separate transform pipeline and reuses the Vite ESM resolver the rest of the Next 15 toolchain already speaks. Pinned to 2.1.9 (last 2.x release on Node 22). |
-| `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs when starting Day 3. AI prompt-hash cache + sliding-window rate limit. |
+| `@upstash/redis` + `@upstash/ratelimit` | Both installed on Day 2 — `@upstash/redis` lands first via AI Integration's `/lib/ai/cache.ts` (prompt-hash cache), and Security adds `@upstash/ratelimit` for the sliding-window rate limiter at `/lib/security/rate-limit.ts`. `@upstash/redis` 1.34.x is the Edge-compatible REST client; `@upstash/ratelimit` 2.0.x is the sliding-window helper. |
+| `vitest` 2.1.9 | Installed on Day 2 by the first agent to need it. Node-environment runner used by `/tests/security/**`, `/tests/ai/**`, and `/tests/ats/**`. Chosen over Jest because the studio targets a single TS-first runner and Vitest reuses the tsconfig `@/*` alias natively. Pinned to 2.1.9 (last 2.x release on Node 22). |
+| `tsx` (dev) | AI Integration Agent installs on Day 2 to run `lib/ai/smoke.ts` (the one-call-per-workflow live smoke) as a plain Node script under `pnpm test:ai:live`. No bundler, no Next runtime needed — `tsx` executes the TS file directly. |
 
 Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.
 
@@ -98,6 +99,12 @@ Every Prisma row that leaves an `app/api/*` route as part of a response goes thr
 **Why:** `SkillsDB.contact`, `SkillsDB.jobs`, and `Application.alignmentAnalysis` are Prisma `Json` columns. Prisma generates them as `Prisma.JsonValue` (a wide union effectively equivalent to `unknown`). Without a single read-boundary helper every Backend Core consumer would re-derive an unsafe cast or call `Schema.parse(...)` inline at each call site, and any drift between the persisted JSON and the contract Zod schema would surface as a runtime error inside an arbitrary route instead of at a single defined boundary.
 
 **Rule:** All `prisma.skillsDB.findUnique` / `.findFirst` / `.findMany` reads run their `contact` and `jobs` columns through `parseContact` / `parseJobs` (in `lib/db/serialize.ts`) before returning to API consumers. All `prisma.application.find*` reads run their `alignmentAnalysis` column through `parseAlignmentAnalysis` (same module). The per-table projectors in that module already do both.
+
+### Security middleware composes with Foundation's auth middleware
+
+**Why:** Next.js only honors a single `middleware.ts` at the repo root, and Foundation owns it for Clerk auth (`clerkMiddleware` callback, `isPublicRoute` matcher). Security primitives — rate limit and headers — live in `/middleware.security.ts` as a library, not a competing entry point. Foundation's `middleware.ts` will call into it from inside its `clerkMiddleware` handler once Day 3 wiring lands (integration sketch is in the source comments of `middleware.security.ts`).
+
+**For Backend Core / Frontend / any future agent:** do not add a second `middleware.ts`. Do not `matcher`-exempt API routes to bypass `middleware.security`. New API routes inherit the read tier (60 req/min) automatically; routes that drive a Claude generation are listed in `AI_ROUTE_PATTERNS` inside `middleware.security.ts` and get the AI tier (10 req/min).
 
 ### `SERVER_NEVER_STORES` policy is broader than the `integrity.sh` Rule 9 grep
 
