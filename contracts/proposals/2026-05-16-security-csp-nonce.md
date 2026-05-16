@@ -1,10 +1,26 @@
 ---
-status: [PENDING REVIEW]
+status: [DECIDED: accept-migrate]
 filed: 2026-05-16
+decided: 2026-05-16
 author: Security Agent
+decided-by: Architect (Day-4 kickoff override)
 ---
 
 # Proposal: CSP nonce migration — defer until rendering-mode trade-off is settled
+
+## Decision (Day-4 override)
+
+The deferral is revoked. Migration lands in `agent/security/d4`.
+
+**Rationale:** Frontend's Day-3 design refresh added `export const dynamic = 'force-dynamic'` to `app/layout.tsx`, which removes the headline reason to defer (the rendering-mode trade-off — ISR / PPR / CDN-cache loss — is already paid). Worse, the static `script-src 'self' 'strict-dynamic'` CSP started blocking inline scripts Next emits at render time (router-state hydration, chunk preloads), visible as a CSP violation on the `/skills` import button modal. The shipped CSP became actively harmful before the proposal could be revisited deliberately.
+
+**Implementation:** see the d4 PR description. middleware.security.ts gains `generateNonce()` + `buildSecurityHeaders({ nonce, isDev })`; middleware.ts generates the nonce per request and passes it to `applySecurityMiddleware(req, userId, { nonce })`; the helper forwards it as the `x-nonce` request header so `app/layout.tsx` reads it via `(await headers()).get('x-nonce')` and passes it to `<ClerkProvider nonce={nonce}>`. SRI alternative remains rejected (still experimental, doesn't address inline-style policy).
+
+The analysis below remains as historical context for the original deferral.
+
+---
+
+# Original proposal (PENDING REVIEW at filing)
 
 ## Question
 
