@@ -94,6 +94,7 @@ function persistEnvelope(
   const meta: ApiKeyMeta = {
     last4: plaintext.slice(-4),
     createdAt: new Date().toISOString(),
+    mode,
   };
   window.localStorage.setItem(LOCAL_STORAGE_KEYS.apiKey, envelope.ciphertext);
   window.localStorage.setItem(LOCAL_STORAGE_KEYS.apiKeySalt, envelope.salt);

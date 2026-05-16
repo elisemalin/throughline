@@ -1,4 +1,6 @@
-[PENDING REVIEW]
+[DECIDED: accept]
+
+Accepted by Architect 2026-05-16. Field added to `ApiKeyMeta` in `/contracts/storage.ts` in this same PR. Frontend's local-only `throughline:apiKeyMode` shim should be removed in a follow-up commit; if it survives this PR's merge, file as Day-4 cleanup.
 
 # Proposal: extend ApiKeyMeta with `mode`
 
