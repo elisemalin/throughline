@@ -2,6 +2,36 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/security/d4] — 2026-05-16
+
+### Added
+- `lib/security/crypto.ts`, `lib/security/rate-limit.ts`, `middleware.security.ts`: nonce-based CSP. `generateNonce()` produces a fresh base64-UUID per request; `buildSecurityHeaders({ nonce, isDev })` interpolates `'nonce-{value}'` into `script-src` (and into `style-src` in prod; dev keeps `'unsafe-inline'` for Tailwind HMR). `applySecurityMiddleware` forwards the nonce on the `x-nonce` request header via `NextResponse.next({ request: { headers } })` so `app/layout.tsx` can read it via `(await headers()).get('x-nonce')`. `ClerkProvider` receives it as the `nonce` prop so its bootstrap script picks up the same value. Resolves the Day-3 proposal `2026-05-16-security-csp-nonce.md` as `[DECIDED: accept-migrate]`.
+- `tests/security/csp-nonce.test.ts` (12 tests): generator entropy (100 unique nonces in 100 calls), base64 charset, script-src interpolation, style-src dev-vs-prod branching, `'unsafe-eval'` dev-only, `upgrade-insecure-requests`, plus three composition assertions that confirm the nonce reaches the response CSP AND the downstream request via Next's `x-middleware-override-headers` + `x-middleware-request-x-nonce` mechanism (including on the 429 short-circuit path).
+- `tests/security/pentest.test.ts` (30 tests): XSS (CSP blocks inline scripts without nonce / blocks object-embed / blocks `data:` in script-src; `wrapUntrusted` escapes `<`; `SECURITY_PREAMBLE` references the convention), CSRF (state-mutating endpoints not GET-callable; rate-limit response is `application/json` + `nosniff`), SSRF (atsSlugSchema rejects 10 malicious slug shapes and accepts 5 canonical slugs; `ATS_ENDPOINTS` re-encodes pre-encoded slashes; every provider URL is HTTPS on an allowlisted host), rate-limit evasion (per-user keying defeats IP rotation; anonymous flood cannot exhaust an authenticated bucket), and webhook auth bypass (missing svix headers → 400; fabricated signature → 400; body substitution under valid-looking headers → 400; `WebhookVerificationError` class is the handler's catch target).
+
+### Changed
+- `middleware.security.ts`: refactored — `SECURITY_HEADERS` constant split into `STATIC_SECURITY_HEADERS` (the six non-CSP headers) + a `buildSecurityHeaders({ nonce, isDev })` function that composes CSP per request. `withSecurityHeaders` and `applySecurityMiddleware` gain a `nonce` option threaded through both 200 and 429 response paths. Public API kept additive — existing call shape `withSecurityHeaders(res)` still works (CSP is built with no nonce, matching the legacy `'strict-dynamic'`-only shape).
+- `middleware.ts`: imports `generateNonce`; generates one fresh per request; passes to `applySecurityMiddleware(req, userId, { nonce })`. Foundation-owned file; edit coordinated via PR description.
+- `app/layout.tsx`: signature changed from sync to `async`; reads `(await headers()).get('x-nonce')`; passes it to `<ClerkProvider nonce={nonce}>`. `force-dynamic` was already present from Frontend Day-3, so no rendering-mode change.
+- `tests/security/headers.test.ts`: updated assertions for the new shape (`buildSecurityHeaders` returns the seven headers, `STATIC_SECURITY_HEADERS` carries the six non-CSP entries).
+- `tests/security/middleware-composition.test.ts`: all 17 tests now pass a `nonce` opt; the assert helper checks `STATIC_SECURITY_HEADERS` for the six static values and asserts CSP contains the per-request nonce token.
+- `tests/security/never-stores-grep.test.ts`: unchanged; re-ran clean against the new app surface.
+- `contracts/proposals/2026-05-16-security-csp-nonce.md`: status flipped to `[DECIDED: accept-migrate]` with a Day-4 override section. Original deferral analysis kept as historical context.
+- `docs/threat-model.md`: Boundary 1 (BYOK) row added for the nonce-CSP defense + the XSS-blocking property it provides; residual-risk paragraph rewritten to describe the nonce posture. New section "Cross-stream audit findings — Day 4" records the four webhook-handler findings (2 MEDIUM, 2 LOW) plus APPROVE-RECOMMENDED on PR #16 and #17. New section "Penetration test results — Day 4" maps each attack class to its defense surface and pen-test assertion. Open items reflow: Frontend passphrase UI and webhook handler items closed; CSP nonce item closed; SRI item remains deferred.
+
+### Contract notes
+- `2026-05-16-security-csp-nonce.md` resolved by Architect override at Day-4 kickoff: `[DECIDED: accept-migrate]`.
+
+### Cross-stream reviews posted
+- **PR #12 (Backend Core Day 3 — webhook handler)**: 2 MEDIUM + 2 LOW findings posted. `APPROVE-RECOMMENDED` (post-hoc; PR already merged). Follow-ups tracked in threat-model.md.
+- **PR #16 (External Adapter Day 4 — telemetry + admin CLI + Workday spike)**: spot-reviewed `lib/ats/_telemetry.ts`, `scripts/admin/poll-now.ts`, `jobs/poll.ts` event-handler `safeParse`, `ats-live.yml`. NO ISSUES FOUND. `APPROVE-RECOMMENDED`.
+- **PR #17 (AI Integration Day 4 — cost tracking + dossier budget + ingest warnings)**: spot-reviewed `lib/ai/cost.ts`, `lib/ai/workflows/dossier.ts`, `lib/ai/smoke.ts` ambiguous-ingest block, `tests/ai/ambiguous-ingest.test.ts`. NO ISSUES FOUND. `APPROVE-RECOMMENDED`.
+
+### Carried over
+- Backend Core Day-5: add `ClerkUserEventSchema.strict()` to the webhook handler; file `clerk-user-deleted` proposal.
+- Foundation: env-schema validation at server boot to surface deploy-time misconfig of `CLERK_WEBHOOK_SIGNING_SECRET` before the first webhook arrives.
+- Operational: Vercel Edge IP allowlist scoped to Clerk's egress ranges (defense against webhook signature-failure floods).
+
 ## [agent/frontend/d3] — 2026-05-16
 
 ### Added
