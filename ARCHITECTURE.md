@@ -145,3 +145,13 @@ Each entry's one-line justification:
 | `eslint` ^8.x + `eslint-config-next` 15.5.18 | Lint preset that matches the Next major; CI gate. eslint pinned to ^8.x because next-eslint config is still legacy-format; flat-config migration deferred to a separate proposal. |
 | `@playwright/test` 1.60.0 | Smoke harness. Day 1 ships one placeholder spec. |
 | `@types/node` / `@types/react` / `@types/react-dom` | Type-only deps required by TS strict mode against Next 15 and Node 22. |
+
+### Day 2 Dependencies sub-table (Frontend Agent)
+
+| Package | Why |
+|---|---|
+| `zustand` 5.x | Three small client-side stores (`useApiKeyStore`, `useNavigationStore`, `useToastStore`). Chosen over Redux Toolkit because the only persisted data is the BYOK key envelope; everything else round-trips through TanStack Query against `/lib/mock-api`. |
+| `@tanstack/react-query` 5.x | Single source for every server-state read/write. `QueryProvider` wraps `app/(app)/layout.tsx`; every `/lib/queries/*` hook is a thin wrapper over a `mock-api` function so the Day 5 swap is mechanical. |
+| `lucide-react` 1.x | Icon set used by the prototype. Direct port — every NAV icon, every `<Plus />` / `<RefreshCw />` in the views resolves through one library so the visual language stays consistent. Major version jumped to 1.x in May 2026; identifiers in use (`LayoutDashboard`, `Compass`, etc.) remained stable. |
+| `@axe-core/playwright` 4.x | Drives `pnpm test:a11y`. Day 2 ships one public-route scan (`/sign-in`); the authenticated-route scan unblocks once QA Agent provisions `CI_LIVE_CLERK=1`. |
+| `storybook` 9.x + `@storybook/nextjs` 9.x + `@storybook/addon-a11y` 9.x | Component documentation + per-story axe-core run. Pinned to Storybook 9 because the 8.x line and Next 15.5 + React 19 collide on a webpack `Cannot read properties of undefined (reading 'tap')` error. |

@@ -2,6 +2,32 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/frontend/d2] — 2026-05-16
+
+### Added
+- Seven routes under `app/(app)/*`: `/dashboard`, `/skills`, `/discovery`, `/tracker`, `/documents`, `/interviews`, `/settings`. Each is a server-component shell wrapping a `<route>-client.tsx` that holds interactive state and reads/writes via TanStack Query against `/lib/mock-api`.
+- `app/(app)/layout.tsx` shell: `QueryProvider`, desktop `Sidebar`, mobile `BottomNav`, global `Toaster`. Stone-950 surface with amber-200 accent.
+- Shared components under `/components`: `Pill`, `Card`, `SectionLabel`, `Stat`, `Button`, `Input`, `Textarea`, `Field`, `Modal`, `Markdown`, `Sidebar` / `BottomNav`, `Toaster`. Lifted line-by-line from `prototype/Throughline.jsx` 722-950 with WCAG fixes (focus trap + ESC + restored-focus in `Modal`, label-for on `Field`).
+- Zustand stores under `/stores`: `useApiKeyStore` (BYOK key flow, encrypts via `/lib/security/crypto`), `useNavigationStore`, `useToastStore`.
+- TanStack Query hooks under `/lib/queries`: one per `API_ROUTES` key plus a shared `QueryProvider`. Every component imports from `@/lib/mock-api` only; integrity script confirms zero forbidden imports.
+- Mock API fixtures: `eliseSeed`, `watchlistSeed`, `discoverySeed` lifted from prototype lines 120-650 and reshaped to `/contracts/models.ts`. Document generators now persist their output to `mockState.documents` so the Documents view round-trips end to end.
+- Storybook 9 + `addon-a11y` at `.storybook/`. Stories for all primitives at `/stories/*.stories.tsx`. `storybook:build` exits clean.
+- Playwright specs at `tests/routes/auth-protection.spec.ts` (anonymous request to every authenticated route redirects to `/sign-in`) and `tests/routes/a11y-public.spec.ts` (axe-core scan over `/sign-in`, zero violations).
+- Scripts: `test:e2e:routes`, `test:a11y`, `storybook`, `storybook:build`.
+
+### Changed
+- `lib/mock-api.ts` extended: import `DiscoveredPosting` / `WatchlistCompany`, append seed fixtures, hydrate `mockState` with seeds on module load, document-generation routes persist to `mockState.documents`.
+
+### Contract notes
+- None. No proposals filed; `/contracts/*.ts` untouched.
+
+### Carried over
+- Skills DB inline editing (jobs / projects / clouds) — Day 2 ships the import flow and read-only render; the JobModal / ProjectModal slot lives behind the `/skills` "Import" button as the only mutation entry point.
+- Application detail follow-up date editor + notes editor — deferred to Day 3.
+- `/lib/security/crypto` is owned by Security Agent and not yet shipped; `useApiKeyStore` resolves the module lazily and surfaces a clear runtime error on save/unlock until it lands. Next build prints a warning to the same effect.
+- Full authenticated-route axe-core run (`test:a11y` against the seven `(app)` routes) gated on QA Agent provisioning `CI_LIVE_CLERK=1`. Day 2 a11y test scope is `/sign-in` plus the Storybook bundle's per-story addon-a11y pass.
+- `next lint` deprecation warning surfaces on every run; migration to the ESLint CLI is a Foundation-owned change.
+
 ## [agent/external-adapter/d2] — 2026-05-16
 
 ### Added

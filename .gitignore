@@ -35,3 +35,6 @@ prisma/generated/
 playwright-report/
 test-results/
 coverage/
+
+# Storybook
+.storybook-static/
