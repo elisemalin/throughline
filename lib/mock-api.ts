@@ -530,11 +530,14 @@ export async function patchDiscoveryStatus(
   await delay(FAST);
   const idx = mockState.discovery.findIndex((p) => p.id === id);
   if (idx < 0) throw new Error(`Posting not found: ${id}`);
-  mockState.discovery[idx] = {
-    ...mockState.discovery[idx],
-    status: req.status,
-    applicationId: req.applicationId,
-  };
+  const prev = mockState.discovery[idx];
+  // Discriminated union narrowing: applicationId exists only on the
+  // 'drafted' arm. Non-drafted transitions preserve any existing
+  // applicationId on the row (do not clear) — useful if the user reverts
+  // a 'drafted' posting to 'viewed' for further editing.
+  mockState.discovery[idx] = req.status === 'drafted'
+    ? { ...prev, status: req.status, applicationId: req.applicationId }
+    : { ...prev, status: req.status };
   return { ok: true };
 }
 

@@ -61,22 +61,31 @@ export const ApplicationEventKindSchema = z.enum(APPLICATION_EVENT_KINDS);
 // code can rely on a single truthiness check across every optional field.
 // ---------------------------------------------------------------------------
 
-const stripEmpty = (v: unknown): unknown =>
+// stripEmpty is exported so any future preprocess-on-empty consumer can
+// reuse the canonical primitive rather than redeclaring '' -> undefined.
+export const stripEmpty = (v: unknown): unknown =>
   v === '' || v == null ? undefined : v;
 
+// optionalString carries a default upper bound (500 chars) so a 10MB
+// "location" or "source" payload cannot pass validation via the shared
+// primitive. Call sites that need a tighter or wider bound use
+// boundedOptionalString below.
 export const optionalString = z.preprocess(
   stripEmpty,
-  z.string().optional(),
+  z.string().max(500).optional(),
 );
+
+export const boundedOptionalString = (max: number) =>
+  z.preprocess(stripEmpty, z.string().max(max).optional());
 
 export const optionalUrl = z.preprocess(
   stripEmpty,
-  z.string().url().optional(),
+  z.string().url().max(2_000).optional(),
 );
 
 export const optionalEmail = z.preprocess(
   stripEmpty,
-  z.string().email().optional(),
+  z.string().email().max(320).optional(),     // RFC 5321 max email length
 );
 
 // ATS slugs come from user input and are interpolated into provider URLs.
@@ -136,7 +145,7 @@ export const ProjectSchema = z
     actions: z.array(z.string().max(500)).max(20).default([]),
     result: z.string().max(2_000),
     metrics: z
-      .record(z.string().max(200))
+      .record(z.string().max(100), z.string().max(200))
       .refine((m) => Object.keys(m).length <= 20, 'metrics: max 20 entries')
       .default({}),
     scope: z.string().max(500).default(''),
@@ -158,8 +167,10 @@ export const JobSchema = z
     employer: z.string().min(1).max(200),
     title: z.string().min(1).max(200),
     startDate: isoMonthString,
-    endDate: z
-      .preprocess(stripEmpty, z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM').optional()),
+    endDate: z.preprocess(
+      stripEmpty,
+      z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM').optional(),
+    ),
     location: z.string().max(200).default(''),
     industry: z.string().max(200).default(''),
     summary: z.string().max(2_000).default(''),
@@ -256,11 +267,11 @@ export const ApplicationSchema = z
     location: optionalString,
     remote: z.boolean().default(false),
     salaryRange: optionalString,
-    jobDescription: z.preprocess(stripEmpty, z.string().max(50_000).optional()),
+    jobDescription: boundedOptionalString(50_000),
     status: ApplicationStatusSchema,
-    appliedDate: optionalString,
-    followUpDate: optionalString,
-    notes: z.preprocess(stripEmpty, z.string().max(10_000).optional()),
+    appliedDate: boundedOptionalString(50),     // ISO date string
+    followUpDate: boundedOptionalString(50),
+    notes: boundedOptionalString(10_000),
     alignmentAnalysis: AlignmentAnalysisSchema.optional(),
     // alignmentScore: derived from alignmentAnalysis?.score. Server projects
     // it into list responses; Frontend reads it directly. Not persisted as a
@@ -307,9 +318,11 @@ export type Document = z.infer<typeof DocumentSchema>;
 // WatchlistCompany + DiscoveredPosting
 //
 // applicationId on DiscoveredPosting is set when the user drafts an
-// application from a discovered posting (status: 'drafted'). The discriminated
-// union in /contracts/api.ts DiscoveryUpdateSchema enforces this invariant
-// at write time.
+// application from a discovered posting (status: 'drafted'). The
+// invariant ("applicationId iff status='drafted'") is enforced at
+// request-parse time by DiscoveryUpdateSchema in /contracts/api.ts (a
+// discriminated union). It is NOT a DB-level constraint — Foundation
+// Agent does not need a CHECK clause when mirroring this to Prisma.
 // ---------------------------------------------------------------------------
 
 export const WatchlistCompanySchema = z
