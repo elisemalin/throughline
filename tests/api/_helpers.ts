@@ -24,6 +24,11 @@ export const mPrisma = vi.mocked(prisma, true);
 
 export function signedIn(userId: string = FAKE_USER_ID) {
   mAuth.mockResolvedValue({ userId } as Awaited<ReturnType<typeof auth>>);
+  // JIT user provisioning in requireUserId reads the User row on every
+  // authenticated request. Default to "row exists" so tests don't pay the
+  // create-fallback path; tests that exercise the cold-start path clear and
+  // re-mock as needed.
+  mPrisma.user.findUnique.mockResolvedValue({ id: userId } as never);
 }
 
 export function signedOut() {
