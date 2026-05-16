@@ -1,4 +1,4 @@
-[PENDING REVIEW]
+[DECIDED: accept]
 
 # Add `warnings` to `IngestRawSchema`
 
@@ -43,4 +43,4 @@ These ship in the AI Day-3 PR as soon as the proposal is approved.
 
 ## Architect decision
 
-`[PENDING REVIEW]`
+`[DECIDED: accept]` — Architect 2026-05-16. Field added to `IngestRawSchema` in this same PR (Architect commit on the branch); INGEST_SYSTEM updated to instruct the model to emit warnings. AI Integration's mocks/fixtures already include the field per their PR description.
