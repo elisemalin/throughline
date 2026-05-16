@@ -44,6 +44,113 @@ Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 - `next lint` deprecation warning still surfaces on every run.
 - Storybook bundle is large (`iframe-Cc3l5h1l.js` ≈ 1.2MB) but the route bundles ship well under the perf budget; addressing the Storybook split is Storybook-side work, not product code.
 
+## [agent/security/d4] — 2026-05-16
+
+### Added
+- `lib/security/crypto.ts`, `lib/security/rate-limit.ts`, `middleware.security.ts`: nonce-based CSP. `generateNonce()` produces a fresh base64-UUID per request; `buildSecurityHeaders({ nonce, isDev })` interpolates `'nonce-{value}'` into `script-src` (and into `style-src` in prod; dev keeps `'unsafe-inline'` for Tailwind HMR). `applySecurityMiddleware` forwards the nonce on the `x-nonce` request header via `NextResponse.next({ request: { headers } })` so `app/layout.tsx` can read it via `(await headers()).get('x-nonce')`. `ClerkProvider` receives it as the `nonce` prop so its bootstrap script picks up the same value. Resolves the Day-3 proposal `2026-05-16-security-csp-nonce.md` as `[DECIDED: accept-migrate]`.
+- `tests/security/csp-nonce.test.ts` (12 tests): generator entropy (100 unique nonces in 100 calls), base64 charset, script-src interpolation, style-src dev-vs-prod branching, `'unsafe-eval'` dev-only, `upgrade-insecure-requests`, plus three composition assertions that confirm the nonce reaches the response CSP AND the downstream request via Next's `x-middleware-override-headers` + `x-middleware-request-x-nonce` mechanism (including on the 429 short-circuit path).
+- `tests/security/pentest.test.ts` (30 tests): XSS (CSP blocks inline scripts without nonce / blocks object-embed / blocks `data:` in script-src; `wrapUntrusted` escapes `<`; `SECURITY_PREAMBLE` references the convention), CSRF (state-mutating endpoints not GET-callable; rate-limit response is `application/json` + `nosniff`), SSRF (atsSlugSchema rejects 10 malicious slug shapes and accepts 5 canonical slugs; `ATS_ENDPOINTS` re-encodes pre-encoded slashes; every provider URL is HTTPS on an allowlisted host), rate-limit evasion (per-user keying defeats IP rotation; anonymous flood cannot exhaust an authenticated bucket), and webhook auth bypass (missing svix headers → 400; fabricated signature → 400; body substitution under valid-looking headers → 400; `WebhookVerificationError` class is the handler's catch target).
+
+### Changed
+- `middleware.security.ts`: refactored — `SECURITY_HEADERS` constant split into `STATIC_SECURITY_HEADERS` (the six non-CSP headers) + a `buildSecurityHeaders({ nonce, isDev })` function that composes CSP per request. `withSecurityHeaders` and `applySecurityMiddleware` gain a `nonce` option threaded through both 200 and 429 response paths. Public API kept additive — existing call shape `withSecurityHeaders(res)` still works (CSP is built with no nonce, matching the legacy `'strict-dynamic'`-only shape).
+- `middleware.ts`: imports `generateNonce`; generates one fresh per request; passes to `applySecurityMiddleware(req, userId, { nonce })`. Foundation-owned file; edit coordinated via PR description.
+- `app/layout.tsx`: signature changed from sync to `async`; reads `(await headers()).get('x-nonce')`; passes it to `<ClerkProvider nonce={nonce}>`. `force-dynamic` was already present from Frontend Day-3, so no rendering-mode change.
+- `tests/security/headers.test.ts`: updated assertions for the new shape (`buildSecurityHeaders` returns the seven headers, `STATIC_SECURITY_HEADERS` carries the six non-CSP entries).
+- `tests/security/middleware-composition.test.ts`: all 17 tests now pass a `nonce` opt; the assert helper checks `STATIC_SECURITY_HEADERS` for the six static values and asserts CSP contains the per-request nonce token.
+- `tests/security/never-stores-grep.test.ts`: unchanged; re-ran clean against the new app surface.
+- `contracts/proposals/2026-05-16-security-csp-nonce.md`: status flipped to `[DECIDED: accept-migrate]` with a Day-4 override section. Original deferral analysis kept as historical context.
+- `docs/threat-model.md`: Boundary 1 (BYOK) row added for the nonce-CSP defense + the XSS-blocking property it provides; residual-risk paragraph rewritten to describe the nonce posture. New section "Cross-stream audit findings — Day 4" records the four webhook-handler findings (2 MEDIUM, 2 LOW) plus APPROVE-RECOMMENDED on PR #16 and #17. New section "Penetration test results — Day 4" maps each attack class to its defense surface and pen-test assertion. Open items reflow: Frontend passphrase UI and webhook handler items closed; CSP nonce item closed; SRI item remains deferred.
+
+### Contract notes
+- `2026-05-16-security-csp-nonce.md` resolved by Architect override at Day-4 kickoff: `[DECIDED: accept-migrate]`.
+
+### Cross-stream reviews posted
+- **PR #12 (Backend Core Day 3 — webhook handler)**: 2 MEDIUM + 2 LOW findings posted. `APPROVE-RECOMMENDED` (post-hoc; PR already merged). Follow-ups tracked in threat-model.md.
+- **PR #16 (External Adapter Day 4 — telemetry + admin CLI + Workday spike)**: spot-reviewed `lib/ats/_telemetry.ts`, `scripts/admin/poll-now.ts`, `jobs/poll.ts` event-handler `safeParse`, `ats-live.yml`. NO ISSUES FOUND. `APPROVE-RECOMMENDED`.
+- **PR #17 (AI Integration Day 4 — cost tracking + dossier budget + ingest warnings)**: spot-reviewed `lib/ai/cost.ts`, `lib/ai/workflows/dossier.ts`, `lib/ai/smoke.ts` ambiguous-ingest block, `tests/ai/ambiguous-ingest.test.ts`. NO ISSUES FOUND. `APPROVE-RECOMMENDED`.
+
+### Carried over
+- Backend Core Day-5: add `ClerkUserEventSchema.strict()` to the webhook handler; file `clerk-user-deleted` proposal.
+- Foundation: env-schema validation at server boot to surface deploy-time misconfig of `CLERK_WEBHOOK_SIGNING_SECRET` before the first webhook arrives.
+- Operational: Vercel Edge IP allowlist scoped to Clerk's egress ranges (defense against webhook signature-failure floods).
+
+## [agent/external-adapter/d4] — 2026-05-16
+
+### Added
+- `lib/ats/_telemetry.ts` — `AsyncLocalStorage`-backed sink that captures every retry decision (5xx / 429 / network) inside a `withRetryTelemetry(sink, fn)` scope. Concurrent calls keep their own sinks, so the daily sweep can attribute retries to the row that triggered them.
+- `lib/ats/_http.ts` instrumented — every retry path calls `recordRetry(reason, waitMs)` into the active sink. No behavior change when no sink is installed.
+- `jobs/poll.ts` — `PollResult` and `PollSweepSummary` gained a `retries: RetrySummary` field (`{ fivexx, fourTwentyNine, network, totalBackoffMs }`). Per-row retries roll up into the daily / on-demand sweep summary so an operator can see at a glance whether providers are rate-limiting us or flaking.
+- `scripts/admin/poll-now.ts` — tsx-runnable admin CLI that fires `ats/poll.requested` for a given owner. Sole producer for `atsPollRequestedFunction` until Backend Core wires a route again. `pnpm admin:poll-now <ownerId>` is the entry point.
+- `tests/ats/live/contract-drift.test.ts` — gated on `ATS_LIVE=1`; hits the real Greenhouse / Lever / Ashby boards (`anthropic`, `spotify`, `linear`) and asserts every normalized row passes `NormalizedPostingSchema`. Catches silent provider wire-format drift. Verified locally against all three providers.
+- `.github/workflows/ats-live.yml` — runs the live drift suite on push to `agent/external-adapter/**`, on PRs that touch `lib/ats/**`, and nightly at 07:00 UTC. No secret required (read-only public APIs).
+- `package.json` scripts: `test:ats:live`, `admin:poll-now`.
+- `tests/fixtures/ats/workday/{salesforce,adobe}.json` — real Workday board captures (1,389 + 1,177 jobs) for the future adapter, gated on the spike-results proposal.
+- `contracts/proposals/2026-05-16-external-adapter-job-tags.md` — `[PENDING REVIEW]` proposal to add `tags: string[]` to `NormalizedPosting` + `DiscoveredPosting`. Documents per-provider extraction (Lever `categories`, Ashby `department/team/employmentType`, Greenhouse `departments/offices`).
+- `contracts/proposals/2026-05-16-external-adapter-workday-spike-results.md` — `[PENDING REVIEW]` proposal superseding the Day-3 workday-deferred. The public API works; ship is blocked on three Architect-only contract changes (slug schema, endpoint constructor, postedAt-or-detail-call tradeoff). Captured fixtures sit ready under `tests/fixtures/ats/workday/` for the on-accept implementation.
+
+### Changed
+- `jobs/poll.ts` now imports `ATS_POLL_REQUESTED_EVENT` and `AtsPollRequestedDataSchema` from `/contracts/ats.ts` (the architect accepted the Day-3 proposal). Local copies of both removed. The event handler validates the payload via `AtsPollRequestedDataSchema.safeParse(event.data)` and throws with the first issue message on a malformed payload.
+- `pollOne` now installs a per-row retry sink (`newSink()` + `withRetryTelemetry`) so retries are attributed correctly even when many rows are polled concurrently in the daily sweep.
+
+### Cross-stream coordination
+- The orphaned `atsPollRequestedFunction` now has a sole producer (`scripts/admin/poll-now.ts`). If Backend Core wires a route again, External Adapter does not need to ship anything — the consumer is already in place. Noted in the PR description.
+
+### Contract notes
+- Two `[PENDING REVIEW]` proposals filed (see Added). External Adapter does not modify `/contracts/*.ts` directly.
+
+### Carried over
+- Architect to decide on `job-tags.md` (cheap, unblocks Lever's richer category data) and `workday-spike-results.md` (supersedes workday-deferred; needs slug schema + endpoint constructor changes).
+- Live drift CI workflow runs but the schedule and any failure alerting is unconfigured on the GitHub project; Architect/Foundation may want to wire a notification.
+
+## [agent/backend-core/d4] — 2026-05-16
+
+### Added
+- `lib/server/response.ts`: `API_ERROR_CODES` const tuple, `ApiErrorBodySchema` Zod schema, exported `ApiErrorCode` type. `jsonError(status, code, ...)` now takes a typed `code: ApiErrorCode` — accidental typos at call sites fail typecheck. `webhook_persist_failed` added for the 503 transient-failure path.
+- `lib/server/auth.ts`: `requireUserId` JIT fallback. After the Clerk session resolves, the helper reads the User row; on miss, creates a placeholder `{ id, email: '<id>@pending.clerk' }`. Exported `ensureUserRow` and `pendingEmail` for test reuse. P2002 race-collisions swallowed; non-unique errors re-thrown.
+- Webhook resilience: `withTransientRetry` one-shot retry on P1001/P1002/P1008/P1017 after a 100ms back-off; 503 `webhook_persist_failed` on persistent failure. `user.deleted` event now does `deleteMany` on User (cascade per the Prisma schema's `onDelete: Cascade`); idempotent on duplicate deliveries.
+- `/api/discovery/poll`: `newPostings` populated from `count(DiscoveredPosting where status='new')` — Frontend's unseen-count badge.
+- Real-Neon api integration suite at `/tests/api/integration/` (5 files, 10 tests). Covers Application CRUD + events, applications/[id]/alignment persistence, skills/ingest upsert idempotence, watchlist add with adapter stubbed, webhook upsert + user.deleted cascade.
+- `vitest.api.integration.config.ts` + `pnpm test:api:integration` script. `tests/api/integration/_env.ts` setupFile resolves `DATABASE_URL_TEST` (preferred) or falls back to `DATABASE_URL` with a printed warning; suite skips cleanly when neither is set.
+- Unit suite additions: `tests/api/auth-jit.test.ts` (6 tests covering the JIT fallback paths and P2002 race handling), `tests/api/error-codes.test.ts` (4 tests asserting every code in the registry parses against `ApiErrorBodySchema`). Webhook unit test extended with transient-retry, 503-on-persistent-failure, user.deleted cascade, duplicate-delivery idempotence.
+
+### Changed
+- `tests/api/_setup.ts`: added `prisma.user.findUnique`, `prisma.user.create`, `prisma.user.deleteMany` to the mocked surface.
+- `tests/api/_helpers.ts`: `signedIn()` now also mocks `prisma.user.findUnique` to return the test owner row by default (so existing tests don't pay the JIT create path). Tests exercising the cold-start path clear and re-mock.
+- `package.json`: `test:api` `--exclude '**/integration/**'` so the unit run does not surface the gated integration suite as "skipped". Added `test:api:integration`.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` and `/lib/mock-api.ts` untouched.
+
+### Carried over
+- Real-Neon execution path is wired but unexecuted on this branch (no local `DATABASE_URL_TEST`). CI workflow gate will run it once the secret lands.
+- Cascade-delete policy on `user.deleted` deletes ALL owned rows. If Day-5 product calls for soft-delete or retention, the route's body is the single edit site.
+
+## [agent/ai-integration/d4] — 2026-05-16
+
+### Added
+- `lib/ai/cost.ts` — per-`(workflow, model)` token + USD instrumentation. `recordUsage()` is called from `invoke.ts` and `mockInterview.ts` after every SDK round-trip (including retry attempts, so the bill reflects every real call). `getCostStats()` returns a snapshot with totals, per-key aggregates, and call counts; `resetCostStats()` zeros the records. Pricing table is in-source, USD-per-million-tokens, with sonnet-4-6, opus-4-7, haiku-4-5 entries. Unknown models contribute `$0` rather than throw.
+- `DEFAULT_WEB_SEARCH_MAX_USES = 5` + `DossierOpts.webSearchMaxUses?: number` — Backend Core can lower the per-call web_search budget for cost-sensitive callers without redeploying.
+- `tests/ai/cost.test.ts` (8 tests) — pricing-table arithmetic, aggregation, unknown-model fallback, missing-usage default, retry records both attempts.
+- `tests/ai/cache-eviction.test.ts` (5 tests) — TTL contract (CACHE_TTL_SECONDS forwarding, custom-TTL override, sanity 24h), and a simulation of post-eviction behavior using a clearable backing store: a previously-cached entry returns null after the store empties and the next workflow call hits the SDK afresh. Opt-in real-Upstash TTL test is deferred; documented inline.
+- `tests/ai/ambiguous-ingest.test.ts` (6 tests) — drives `runSkillsIngest` against a deliberate-ambiguity corpus (missing end date, duplicate skills, quarter-format dates, too-many-jobs) and asserts the workflow surfaces the `warnings` field unchanged through the Zod parse boundary. Schema cap (20 entries) explicitly tested.
+- `tests/ai/dossier.test.ts` — two new tests pin the default web_search budget and the override path.
+- Smoke script (`lib/ai/smoke.ts`):
+  - Resets and prints `cost.ts` stats per workflow at the end of each run; writes a `_cost-report.json` fixture alongside the per-workflow JSON.
+  - New `mockInterview-calibration-10turns` block drives a 10-user-turn transcript so the live `done` transition can be observed against the mock's threshold.
+  - New `skillsIngest-ambiguous` block packs four parse ambiguities into one resume so the captured fixture shows what the live model writes into `warnings`.
+
+### Changed
+- `lib/ai/workflows/skillsIngest.ts` — `INGEST_OUTPUT_HINT` extended with the `warnings` field shape and one-sentence examples (mirrors the now-merged `INGEST_SYSTEM` addition).
+- `tests/ai/skillsIngest.test.ts` — minimal valid fixture gains `warnings: []`; new test asserts the mock returns a non-empty warnings array.
+- `lib/ai/workflows/dossier.ts` — `WEB_SEARCH_TOOL` constant replaced with a `webSearchTool(maxUses)` factory; `runDossier` and `dossier` accept the new opt.
+
+### Contract notes
+- None. `/contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md` already accepted on `main`; no new proposals filed.
+
+### Carried over
+- **Live smoke not re-run in this PR.** The auto-mode classifier blocked an inline `ANTHROPIC_API_KEY=…` invocation citing the absence of fresh-session consent (the prior key paste was in the Day-3 session). Smoke harness, calibration block, ambiguous-ingest block, and `_cost-report.json` fixture writer are all wired and ready; re-running `pnpm test:ai:live` with a key produces the new fixtures + cost report.
+- `mockInterview-calibration-10turns` fixture cannot be captured until the live smoke runs. Once captured, if `done` is not `true` at turn 10 we either lower the SYSTEM threshold (Architect proposal) or relax the mock fixture's `>= 10` rule.
+
 ## [agent/frontend/d3] — 2026-05-16
 
 ### Added

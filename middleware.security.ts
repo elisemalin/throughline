@@ -1,11 +1,26 @@
-// Security middleware: rate limit + security headers.
+// Security middleware: nonce-based CSP, rate limit, and security headers.
 //
 // WHY a standalone module, not a root middleware.ts: Next.js only honors
 // one middleware entry point and Foundation owns /middleware.ts (Clerk
 // auth). This file exports composable helpers that Foundation's
 // clerkMiddleware callback wires in — see the integration example at the
-// bottom. Splitting auth from rate-limit and headers keeps each agent's
-// blast radius narrow and the diff reviewable.
+// bottom. Splitting auth from rate-limit / nonce / headers keeps each
+// agent's blast radius narrow and the diff reviewable.
+//
+// Day 4: migrated from `script-src 'self' 'strict-dynamic' <origins>` to
+// `script-src 'self' 'nonce-{value}' 'strict-dynamic'`. The Day-3 CSP
+// was breaking inline scripts that Next emits (router-state hydration,
+// chunk preloads) because strict-dynamic without a nonce only trusts
+// explicitly-allowlisted external scripts. The recipe follows
+// https://nextjs.org/docs/app/guides/content-security-policy:
+//
+//   1. Middleware generates a fresh per-request nonce.
+//   2. Middleware forwards the nonce as an `x-nonce` request header so
+//      server components can read it via `(await headers()).get('x-nonce')`.
+//   3. The CSP response header pins script-src + style-src to that nonce.
+//   4. Next auto-applies the nonce to framework scripts, page bundles,
+//      and inline styles/scripts it emits. ClerkProvider takes a `nonce`
+//      prop so its bootstrap script picks the same value up.
 
 import { NextResponse, type NextRequest } from 'next/server';
 import {
@@ -39,15 +54,33 @@ export function isApiRoute(pathname: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Nonce generator
+//
+// WHY base64 over hex: CSP nonces are documented as base64 in MDN and the
+// Next docs example uses Buffer.from(crypto.randomUUID()).toString('base64').
+// crypto.randomUUID() yields 16 random bytes (~22 base64 chars) — well above
+// the 128-bit guess-resistance the CSP spec recommends.
+// ---------------------------------------------------------------------------
+
+export function generateNonce(): string {
+  // crypto.randomUUID() is available in Edge runtime (where middleware runs),
+  // Node 19+, and modern browsers. Encoding the dash-formatted UUID as base64
+  // produces a 48-char string with high entropy and zero allocation cost.
+  return Buffer.from(crypto.randomUUID()).toString('base64');
+}
+
+// ---------------------------------------------------------------------------
 // Security headers
 //
-// HEADER CHOICES:
-//   CSP: strict-dynamic with explicit Clerk + Anthropic origins. nonce-based
-//     script execution would be ideal but Next 15 App Router does not surface
-//     a stable nonce per render in middleware; strict-dynamic with allowlisted
-//     origins is the documented Next.js+Clerk recipe.
-//   HSTS: 31536000s (1y). includeSubDomains; preload omitted because the
-//     Vercel preview subdomains are not preload-eligible.
+// HEADER CHOICES (Day-4 update):
+//   CSP: nonce-based. script-src lists 'self' 'nonce-{value}' 'strict-dynamic'
+//     plus dev-only 'unsafe-eval' (React uses eval to reconstruct server-side
+//     error stacks in dev). style-src lists 'self' 'nonce-{value}' in prod
+//     and 'unsafe-inline' in dev (Next HMR injects unhashed inline styles).
+//     connect-src keeps the Anthropic + Clerk allowlist for the BYOK fetch.
+//     frame-ancestors 'none' + frame-src for Cloudflare Turnstile.
+//   HSTS: 31536000s (1y). includeSubDomains; preload omitted because Vercel
+//     preview subdomains are not preload-eligible.
 //   X-Frame-Options DENY: legacy header retained alongside frame-ancestors
 //     'none' (in CSP) for older browsers.
 //   X-Content-Type-Options nosniff: standard.
@@ -60,24 +93,50 @@ export function isApiRoute(pathname: string): boolean {
 //     Anthropic where a popup could otherwise reach back into our origin.
 // ---------------------------------------------------------------------------
 
-const CSP_DIRECTIVES = [
-  "default-src 'self'",
-  // strict-dynamic with Next's inline-style requirement; Tailwind 4 emits
-  // a style tag at runtime in dev that needs 'unsafe-inline' for styles.
-  "script-src 'self' 'strict-dynamic' https://*.clerk.accounts.dev https://*.clerk.com https://clerk.com https://challenges.cloudflare.com",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com",
-  "font-src 'self' data:",
-  "connect-src 'self' https://api.anthropic.com https://*.clerk.accounts.dev https://*.clerk.com https://clerk.com",
-  "frame-src 'self' https://challenges.cloudflare.com",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-] as const;
+type CspBuildOpts = {
+  nonce: string | null;
+  isDev: boolean;
+};
 
-export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
-  'Content-Security-Policy': CSP_DIRECTIVES.join('; '),
+function buildCsp({ nonce, isDev }: CspBuildOpts): string {
+  // WHY 'strict-dynamic' AND a nonce together: 'strict-dynamic' tells the
+  // browser to trust any script that a nonce-trusted (or hash-trusted) script
+  // dynamically loads. Without 'strict-dynamic', Next's runtime cannot
+  // bootstrap its chunk loader because the chunk URLs are not known at
+  // middleware time. Without a nonce, strict-dynamic has nothing to anchor
+  // trust to and inline bootstrap scripts get blocked.
+  const noncePart = nonce ? ` 'nonce-${nonce}'` : '';
+
+  // Inline-eval is required in dev so React can reconstruct server-side
+  // error stacks. Stripped in prod.
+  const evalPart = isDev ? " 'unsafe-eval'" : '';
+
+  // Tailwind 4's HMR pipeline injects unhashed <style> tags in dev. In prod
+  // styles flow through Next's bundler and get the nonce.
+  const styleSrc = isDev
+    ? "style-src 'self' 'unsafe-inline'"
+    : `style-src 'self'${noncePart}`;
+
+  const directives = [
+    "default-src 'self'",
+    `script-src 'self'${noncePart} 'strict-dynamic'${evalPart}`,
+    styleSrc,
+    "img-src 'self' data: blob: https://*.clerk.com https://img.clerk.com",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.anthropic.com https://*.clerk.accounts.dev https://*.clerk.com https://clerk.com",
+    "frame-src 'self' https://challenges.cloudflare.com",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    'upgrade-insecure-requests',
+  ];
+  return directives.join('; ');
+}
+
+// Static (non-CSP) headers — these never change per request, so they live as
+// a frozen constant and `buildSecurityHeaders` composes them with the CSP.
+export const STATIC_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
   'X-Frame-Options': 'DENY',
   'X-Content-Type-Options': 'nosniff',
@@ -86,8 +145,28 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   'Cross-Origin-Opener-Policy': 'same-origin',
 };
 
-export function withSecurityHeaders(res: NextResponse): NextResponse {
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+export type SecurityHeaderOpts = {
+  nonce?: string | null;
+  isDev?: boolean;
+};
+
+// Returns the full seven-header map for a request. CSP is built fresh per
+// call so the nonce floats through; the other six are constant.
+export function buildSecurityHeaders(
+  opts: SecurityHeaderOpts = {},
+): Record<string, string> {
+  const isDev = opts.isDev ?? process.env.NODE_ENV !== 'production';
+  return {
+    'Content-Security-Policy': buildCsp({ nonce: opts.nonce ?? null, isDev }),
+    ...STATIC_SECURITY_HEADERS,
+  };
+}
+
+export function withSecurityHeaders(
+  res: NextResponse,
+  opts: SecurityHeaderOpts = {},
+): NextResponse {
+  for (const [name, value] of Object.entries(buildSecurityHeaders(opts))) {
     res.headers.set(name, value);
   }
   return res;
@@ -129,31 +208,53 @@ export async function checkApiRateLimit(
 // Composed entry point
 //
 // Foundation's middleware.ts calls this from inside clerkMiddleware, after
-// auth.protect() has run, with the resolved userId. Returning a non-null
-// response short-circuits the request (rate-limited); a null return means
-// the route should continue, with security headers attached by the caller
-// to whatever response Next produces.
+// auth.protect() has run, with the resolved userId and a freshly-generated
+// nonce. The function:
+//   - applies the rate-limit gate to /api/* and returns 429 if exhausted;
+//   - otherwise constructs a NextResponse.next() that forwards the nonce
+//     to the downstream handler via the x-nonce request header (Next picks
+//     this up at render time and applies the nonce to inline framework
+//     scripts);
+//   - attaches the full security-header set (CSP includes the nonce) to
+//     whichever response is returned.
 //
 // Integration sketch in Foundation's middleware.ts:
 //
 //   export default clerkMiddleware(async (auth, req) => {
 //     if (!isPublicRoute(req)) await auth.protect();
 //     const { userId } = await auth();
-//     if (userId) {
-//       const limited = await checkApiRateLimit(req, userId);
-//       if (limited) return withSecurityHeaders(limited);
-//     }
-//     return withSecurityHeaders(NextResponse.next());
+//     const nonce = generateNonce();
+//     return applySecurityMiddleware(req, userId, { nonce });
 //   });
 // ---------------------------------------------------------------------------
+
+export type ApplyOpts = {
+  nonce?: string | null;
+};
 
 export async function applySecurityMiddleware(
   req: NextRequest,
   userId: string | null,
+  opts: ApplyOpts = {},
 ): Promise<NextResponse> {
+  const nonce = opts.nonce ?? null;
+
   if (userId) {
     const limited = await checkApiRateLimit(req, userId);
-    if (limited) return withSecurityHeaders(limited);
+    if (limited) return withSecurityHeaders(limited, { nonce });
   }
-  return withSecurityHeaders(NextResponse.next());
+
+  // WHY forward x-nonce as a REQUEST header: server components read the
+  // nonce via `(await headers()).get('x-nonce')` to attach it to <Script>
+  // tags or ClerkProvider's nonce prop. NextResponse.next({ request: { ... }})
+  // is the Next-documented way to mutate the request headers Next passes to
+  // the downstream handler.
+  const requestHeaders = new Headers(req.headers);
+  if (nonce) requestHeaders.set('x-nonce', nonce);
+
+  const res = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+
+  return withSecurityHeaders(res, { nonce });
 }

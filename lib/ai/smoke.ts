@@ -28,6 +28,7 @@ import {
   skillsIngest,
 } from './index';
 import { getCacheStats, resetCacheStats } from './cache';
+import { getCostStats, resetCostStats } from './cost';
 import type {
   AlignmentInput,
   CoverLetterInput,
@@ -149,6 +150,7 @@ async function main(): Promise<void> {
   const opts = { apiKey };
 
   resetCacheStats();
+  resetCostStats();
   process.stdout.write('smoke: running one call per workflow...\n');
 
   const alignmentInput: AlignmentInput = {
@@ -176,17 +178,78 @@ async function main(): Promise<void> {
   };
   await runOne('mockInterview', () => mockInterview(mockInput, opts));
 
+  // Wrap-up calibration: the mock fixture sets done=true at >= 10 user
+  // turns. Verify the live model's behavior against the same threshold.
+  // The captured fixture records whether done flipped at turn 10; if not,
+  // adjust either the SYSTEM (Architect-only proposal) or the mock fixture.
+  const calibrationTranscript: MockInterviewInput['transcript'] = [];
+  for (let i = 0; i < 10; i += 1) {
+    calibrationTranscript.push({
+      role: 'interviewer',
+      text: `Question ${i + 1}: tell me about the pipeline rewrite project — specifically the part about ${
+        ['scoping', 'metrics', 'pushback', 'tradeoffs', 'rollback plan', 'team buy-in', 'profiling', 'streaming choice', 'reliability target', 'team writeup'][i]
+      }.`,
+    });
+    calibrationTranscript.push({
+      role: 'user',
+      text: `Answer ${i + 1}: I led the work end-to-end. We profiled the slow stages, switched to streaming, and reduced runtime from 8 hours to 45 minutes with zero failures over 90 days.`,
+    });
+  }
+  const calibInput: MockInterviewInput = {
+    application,
+    stories: [],
+    transcript: calibrationTranscript,
+  };
+  await runOne('mockInterview-calibration-10turns', () => mockInterview(calibInput, opts));
+
   const ingestInput: IngestInput = {
     resumeText:
       'Jane Doe\nSenior Engineer\n\nExample Co — Senior Engineer (2022 - present)\n- Rewrote ETL pipeline; runtime 8h to 45m.',
   };
   await runOne('skillsIngest', () => skillsIngest(ingestInput, opts));
 
-  const stats = getCacheStats();
+  // Ambiguous-resume calibration for the new warnings field. The resume
+  // below packs four parse ambiguities into one input (missing end date
+  // on a current role, duplicate skill entries, quarter-format dates,
+  // many roles); the captured fixture lets the Architect see what kinds
+  // of warnings the live model actually emits.
+  const ambiguousIngestInput: IngestInput = {
+    resumeText: [
+      'Jane Doe',
+      'Senior Engineer',
+      '',
+      'Skills: Python, Python, TypeScript, SQL, Python, SQL, TypeScript',
+      '',
+      'Acme Co — Senior Engineer',
+      '2022-01 — Present',
+      '- Owned ETL rewrite.',
+      '',
+      'Widgets Inc — PM',
+      'Q3 2024 — Q1 2025',
+      '- Launched discovery flow.',
+      '',
+      'Foo Corp — Engineer',
+      '2019 — 2021 (dates approximate)',
+      '- Built internal tools.',
+    ].join('\n'),
+  };
+  await runOne('skillsIngest-ambiguous', () => skillsIngest(ambiguousIngestInput, opts));
+
+  const cache = getCacheStats();
+  const cost = getCostStats();
   process.stdout.write(
-    `smoke: all workflows succeeded. cache stats — hits:${stats.hits} misses:${stats.misses} sets:${stats.sets}\n`,
+    `smoke: all workflows succeeded. cache — hits:${cache.hits} misses:${cache.misses} sets:${cache.sets}\n`,
   );
-  process.stdout.write(`smoke: golden fixtures written to ${FIXTURES_DIR}\n`);
+  process.stdout.write(`smoke: cost report (per workflow × model):\n`);
+  for (const [key, entry] of Object.entries(cost.byWorkflow)) {
+    const usd = entry.usd.toFixed(4);
+    process.stdout.write(
+      `  ${key.padEnd(40)} in:${entry.inputTokens.toString().padStart(7)} out:${entry.outputTokens.toString().padStart(6)} calls:${entry.calls}  ~$${usd}\n`,
+    );
+  }
+  process.stdout.write(`  TOTAL                                     ~$${cost.totalUsd.toFixed(4)}\n`);
+  writeFixture('_cost-report', { ...cost, capturedAt: new Date().toISOString() });
+  process.stdout.write(`smoke: golden fixtures + cost report written to ${FIXTURES_DIR}\n`);
 }
 
 main().catch((err) => {

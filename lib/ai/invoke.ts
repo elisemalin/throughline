@@ -20,6 +20,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { MODEL_DEFAULT } from '@/contracts/ai';
 import { cacheGet, cacheSet } from './cache';
 import { extractText } from './client';
+import { recordUsage } from './cost';
 import { promptHash } from './hash';
 import { withValidationRetry, type SchemaWithOutput } from './retry';
 
@@ -90,6 +91,9 @@ export async function invokeOneShot<T>(args: InvokeArgs<T>): Promise<T> {
       },
       args.signal ? { signal: args.signal } : undefined,
     );
+    // Record both successful and retry calls so the cost log reflects
+    // every SDK round-trip, not just the one whose output we kept.
+    recordUsage(args.workflow, model, response.usage);
     const text = extractText(response);
     return tryParseJson(text);
   };

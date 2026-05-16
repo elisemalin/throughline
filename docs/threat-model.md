@@ -60,12 +60,14 @@ The user's Anthropic API key never crosses the boundary into our server. The bro
 | Mixed-content downgrade | `Strict-Transport-Security max-age=31536000; includeSubDomains` | `middleware.security.ts` |
 | Server logs accidentally capture key material via stack traces or request mirrors | `SERVER_NEVER_STORES_GREP_TOKENS` includes `apiKeyPlaintext`, `apiKeyCiphertext`, `apiKeyIv`, `apiKeySalt`, `kdfKey`, `passphrase` | Security Agent PR-level adversarial review (FLOOR.md "two-agent review for high-risk surfaces") |
 | Security headers + per-user rate limit not enforced because middleware was a library and not wired | `middleware.ts` composes `applySecurityMiddleware` from `@/middleware.security` inside the `clerkMiddleware` callback (Day 3) — every response now carries the seven headers and `/api/*` calls go through the per-user sliding-window bucket | `tests/security/middleware-composition.test.ts` exercises the composed pathway across public / private / API / AI-API request shapes |
+| Inline scripts Next.js emits (router-state hydration, chunk preloads) executed under a no-nonce `strict-dynamic` CSP, breaking the live app at `/skills` | Day-4 migrated to per-request nonce CSP. `middleware.ts` generates a fresh nonce per request; `applySecurityMiddleware` forwards it on the `x-nonce` request header so `app/layout.tsx` reads it via `(await headers()).get('x-nonce')` and passes it to `<ClerkProvider nonce={nonce}>`. Next auto-applies the nonce to its emitted framework scripts | `tests/security/csp-nonce.test.ts` pins generator entropy + per-request uniqueness + script-src/style-src interpolation; manual `curl localhost:3099/sign-in` shows 20/21 `<script>` tags carry the nonce attribute (the 21st is Clerk's CDN bundle loaded dynamically by the nonce-trusted bootstrap, which `'strict-dynamic'` permits) |
+| Attacker injects `<script>alert(1)</script>` through stored user input | React DOM escapes string children + nonce-based CSP rejects unnonced inline scripts + `wrapUntrusted` escapes `<` so user payloads cannot synthesize fake closing tags inside AI prompts | `tests/security/pentest.test.ts` `XSS — CSP blocks the classic vectors` |
 
 ### Residual risk
 
-A determined XSS that bypasses our CSP (e.g. a content injection through a trusted Clerk-served script that gets compromised upstream) can exfiltrate ciphertext + IV + salt and then brute-force the passphrase offline at 100k iterations per guess. Passphrase strength is the user's responsibility; the UI surfaces a strength meter.
+A determined XSS that bypasses our CSP can exfiltrate the localStorage ciphertext + IV + salt and then brute-force the passphrase offline at 100k iterations per guess. Passphrase strength is the user's responsibility; the UI surfaces a strength meter (Frontend Day-3 `PassphraseStrength.tsx`).
 
-The current CSP uses `'strict-dynamic'` with a narrow Clerk + Anthropic + Cloudflare-Turnstile allowlist rather than per-request nonces. Per-request nonces are stricter (an attacker-injected `<script>` would need a valid nonce to execute) but Next.js requires every nonce-using page to be dynamically rendered — which disables ISR, breaks Partial Prerendering, and removes CDN caching. The Day-3 spike that documented this trade-off and the formal deferral are in `/contracts/proposals/2026-05-16-security-csp-nonce.md`.
+The CSP is nonce-based as of Day 4: `script-src 'self' 'nonce-{per-request}' 'strict-dynamic'`. An attacker-injected `<script>` tag has no valid nonce and is rejected; `'strict-dynamic'` ignores the legacy allowlist so even a CDN-hosted compromised script cannot execute without being dynamically loaded by a nonce-trusted bootstrap. Resolution of the Day-3 deferred proposal is at `/contracts/proposals/2026-05-16-security-csp-nonce.md` (`[DECIDED: accept-migrate]`).
 
 ---
 
@@ -170,9 +172,42 @@ The webhook route is the only public POST that writes to our DB. If `CLERK_WEBHO
 
 ---
 
+## Cross-stream audit findings — Day 4
+
+Backend Core's `/api/webhooks/clerk` handler (merged in PR #12) was audited against this document. Two MEDIUM and two LOW findings posted as a PR comment; reproduced here for the record.
+
+| Severity | Finding | Disposition |
+|---|---|---|
+| MEDIUM | No Zod validation of the verified Svix payload — the handler casts via TypeScript only. Clerk shape drift (e.g. `email_addresses` rename) would silently break JIT provisioning with no telemetry. | Tracked for Backend Core Day-5: add `ClerkUserEventSchema.strict()`, return `500 webhook_payload_drift` on parse failure so Clerk retries. |
+| MEDIUM | `user.deleted` events are acked without local-data action. Each Clerk deletion leaves orphaned `User` row + every owned application/skills row. | Compliance-relevant (right-to-erasure). File `/contracts/proposals/<date>-backend-clerk-user-deleted.md` before GA. |
+| LOW | No defense against signature-failure flood (route is public; rate-limit middleware no-ops without userId). | Operational mitigation: Vercel Edge IP allowlist scoped to Clerk's egress ranges. No code change required. |
+| LOW | Missing-secret returns 500 forever — Clerk retries indefinitely with no startup-time signal. | Foundation-owned: shared `env.schema.ts` validated at server boot to fail at deploy rather than first request. |
+
+External Adapter PR #16 (telemetry + admin CLI + ATS_LIVE drift) and AI Integration PR #17 (cost tracking + dossier budget + warnings) were spot-reviewed for `SERVER_NEVER_STORES` violations. Both clean — neither `lib/ats/_telemetry.ts` nor `lib/ai/cost.ts` touches prompt / response / key material. `APPROVE-RECOMMENDED` posted on both.
+
+## Penetration test results — Day 4
+
+`tests/security/pentest.test.ts` (30 assertions, all passing) exercises the shipped defenses:
+
+| Attack class | Result | Defense surface |
+|---|---|---|
+| Inline `<script>` injection (XSS) | Blocked | nonce-based CSP; no `'unsafe-inline'` in `script-src`; no `data:` allowed in `script-src` |
+| `<object>` / `<embed>` injection | Blocked | `object-src 'none'` |
+| Prompt-injection wrapper escape | Blocked | `wrapUntrusted` escapes `<` and `&`; closing tag carries the same `name` attribute so adjacent blocks are pair-distinguishable |
+| CSRF via cross-origin POST | Blocked | Clerk session cookies are SameSite=Lax; state-mutating endpoints require an authenticated userId; AI generation endpoints are correctly classified for the AI rate-limit tier so prefetch-storms cannot drain the bucket |
+| CSRF response-as-script confusion | Blocked | `X-Content-Type-Options: nosniff` + `application/json` response type |
+| SSRF via ATS slug — path traversal, host substitution, length overflow, SQL fragments, encoded slashes, internal-service URLs | All rejected | `atsSlugSchema` regex `^[a-zA-Z0-9_-]{1,100}$` + `encodeURIComponent` in `ATS_ENDPOINTS` as defense-in-depth |
+| SSRF via outbound host substitution | Blocked | Every `ATS_ENDPOINTS` URL pins HTTPS protocol and an allowed provider host |
+| Rate-limit evasion via IP rotation (same session) | Blocked | Per-user (Clerk userId) keying, not per-IP |
+| Rate-limit evasion via anonymous flood | N/A | Anonymous requests carry no userId, so they consume no bucket — but they also reach only public routes that do not call our API |
+| Webhook auth bypass via missing svix headers | Blocked | 400 `missing_signature_headers` |
+| Webhook auth bypass via fabricated signature | Blocked | Svix `verify()` throws `WebhookVerificationError` → 400 `invalid_signature` |
+| Webhook auth bypass via body substitution | Blocked | Signature binds the body |
+
 ## Open items
 
-- Frontend Agent has not yet shipped the passphrase-strength UI. Until then, `noPassphraseFallback` is a default for users who skip the passphrase step entirely. Tracked: file `/contracts/proposals/2026-05-16-security-passphrase-ux.md` if the UX flow needs negotiation.
-- `/api/webhooks/clerk` handler not yet shipped. `middleware.ts` already allows the path through (Day 3, Security); Backend Core ships the handler with Svix signature verification on Day 3 — Security Agent reviews at PR-open.
-- CSP nonce migration: spiked on Day 3; deferred per `/contracts/proposals/2026-05-16-security-csp-nonce.md`. The trade-off is not API availability (Next 13.4.20+ supports nonces) but the requirement to force-dynamic-render every page, which disables ISR, Partial Prerendering, and CDN caching. Revisit when Frontend + Architect have signed off on the rendering-mode cost.
-- Subresource Integrity (`experimental.sri.algorithm`) is an alternative that preserves static generation. Currently flagged experimental in Next 14+ and does not address inline-style policy; deferred per the same proposal.
+- Frontend's passphrase-strength UI shipped in Day 3 (`PassphraseStrength.tsx`); the four-band hand-rolled meter satisfies the threat-model dependency. The `noPassphraseFallback` warning surface and the "Skip passphrase (insecure)" toggle also shipped — open item closed.
+- `/api/webhooks/clerk` handler shipped in Backend Core Day 3 (PR #12). Security audited Day 4 — see Cross-stream audit findings above for the two MEDIUM follow-ups. Open item closed; follow-ups tracked.
+- CSP nonce migration shipped Day 4 — `/contracts/proposals/2026-05-16-security-csp-nonce.md` resolved as `[DECIDED: accept-migrate]`. Open item closed.
+- Subresource Integrity (`experimental.sri.algorithm`) remains deferred. Currently flagged experimental in Next 14+ and does not address inline-style policy. Revisit only if Anthropic / Clerk start emitting build-time SRI hashes.
+- Webhook handler hardening (Zod payload schema, IP allowlist, `user.deleted` policy) tracked in the Cross-stream audit findings table above for Backend Core Day-5.

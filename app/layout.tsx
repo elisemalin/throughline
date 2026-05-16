@@ -13,6 +13,7 @@
 // coded by Claude agents."
 
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { ClerkProvider } from '@clerk/nextjs';
 import { Fraunces, Italiana } from 'next/font/google';
 
@@ -43,13 +44,18 @@ export const metadata: Metadata = {
 // root opts the whole tree into request-time rendering.
 export const dynamic = 'force-dynamic';
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // WHY: middleware.security.ts forwards a per-request nonce on the x-nonce
+  // request header. Passing it to ClerkProvider's `nonce` prop lets Clerk
+  // attach the value to the bootstrap script it injects, so the script
+  // satisfies our nonce-based CSP without us widening script-src.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
-    <ClerkProvider>
+    <ClerkProvider nonce={nonce}>
       <html
         lang="en"
         className={`${fontWordmark.variable} ${fontDisplay.variable}`}

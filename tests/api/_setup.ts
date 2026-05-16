@@ -47,7 +47,10 @@ vi.mock('@/lib/db/prisma', () => ({
       aggregate: vi.fn(),
     },
     user: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
       upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     discoveredPosting: {
       findMany: vi.fn(),

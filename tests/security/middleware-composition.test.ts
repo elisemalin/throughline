@@ -4,16 +4,20 @@
 // WHY here, not against the running clerkMiddleware wrapper: the wrapper
 // adds Clerk's session-resolution layer that requires real Clerk env vars
 // and a live session cookie. The composition this test verifies is the
-// inner contract — given (req, userId), what does applySecurityMiddleware
-// return — which is exactly what middleware.ts at the root delegates to.
-// The integration of clerkMiddleware itself is covered by Playwright in
-// tests/routes/auth-protection.spec.ts.
+// inner contract — given (req, userId, { nonce }), what does
+// applySecurityMiddleware return — which is exactly what middleware.ts
+// delegates to. The integration of clerkMiddleware itself is covered by
+// Playwright in tests/routes/auth-protection.spec.ts.
+//
+// Day-4 update: the helpers now take a `nonce` option. CSP is built per
+// request, so the assertion helper no longer compares against a static
+// constant — it asserts each header is present with the right *shape*.
 
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   applySecurityMiddleware,
-  SECURITY_HEADERS,
+  STATIC_SECURITY_HEADERS,
 } from '@/middleware.security';
 import {
   DEFAULT_AI_LIMIT_PER_MIN,
@@ -71,10 +75,17 @@ function makeReq(pathname: string, method = 'GET'): NextRequest {
   });
 }
 
+const TEST_NONCE = 'test-nonce-value';
+
 function assertAllSecurityHeaders(res: { headers: Headers }): void {
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+  // The six static headers compare equal to the constant; CSP is checked
+  // separately because it carries the per-request nonce.
+  for (const [name, value] of Object.entries(STATIC_SECURITY_HEADERS)) {
     expect(res.headers.get(name)).toBe(value);
   }
+  const csp = res.headers.get('Content-Security-Policy');
+  expect(csp).toBeTruthy();
+  expect(csp).toContain(`'nonce-${TEST_NONCE}'`);
 }
 
 beforeEach(() => {
@@ -90,13 +101,16 @@ describe('applySecurityMiddleware — security headers on every response', () =>
     const res = await applySecurityMiddleware(
       makeReq('/api/applications'),
       'user_authd',
+      { nonce: TEST_NONCE },
     );
     expect(res.status).toBe(200);
     assertAllSecurityHeaders(res);
   });
 
   it('attaches headers to an anonymous request on a public route', async () => {
-    const res = await applySecurityMiddleware(makeReq('/sign-in'), null);
+    const res = await applySecurityMiddleware(makeReq('/sign-in'), null, {
+      nonce: TEST_NONCE,
+    });
     expect(res.status).toBe(200);
     assertAllSecurityHeaders(res);
   });
@@ -105,6 +119,7 @@ describe('applySecurityMiddleware — security headers on every response', () =>
     const res = await applySecurityMiddleware(
       makeReq('/dashboard'),
       'user_authd',
+      { nonce: TEST_NONCE },
     );
     expect(res.status).toBe(200);
     assertAllSecurityHeaders(res);
@@ -118,12 +133,14 @@ describe('applySecurityMiddleware — rate-limit boundary', () => {
       const ok = await applySecurityMiddleware(
         makeReq('/api/applications'),
         userId,
+        { nonce: TEST_NONCE },
       );
       expect(ok.status).toBe(200);
     }
     const blocked = await applySecurityMiddleware(
       makeReq('/api/applications'),
       userId,
+      { nonce: TEST_NONCE },
     );
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('Retry-After')).toBeTruthy();
@@ -140,12 +157,14 @@ describe('applySecurityMiddleware — rate-limit boundary', () => {
       const ok = await applySecurityMiddleware(
         makeReq('/api/alignment'),
         userId,
+        { nonce: TEST_NONCE },
       );
       expect(ok.status).toBe(200);
     }
     const blocked = await applySecurityMiddleware(
       makeReq('/api/alignment'),
       userId,
+      { nonce: TEST_NONCE },
     );
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('X-RateLimit-Limit')).toBe(
@@ -161,7 +180,9 @@ describe('applySecurityMiddleware — rate-limit boundary', () => {
     // in isPublicRoute. The headers test above covers that the response
     // still carries security headers.
     for (let i = 0; i < DEFAULT_READ_LIMIT_PER_MIN + 5; i++) {
-      const r = await applySecurityMiddleware(makeReq('/sign-in'), null);
+      const r = await applySecurityMiddleware(makeReq('/sign-in'), null, {
+        nonce: TEST_NONCE,
+      });
       expect(r.status).toBe(200);
     }
   });
@@ -171,6 +192,7 @@ describe('applySecurityMiddleware — rate-limit boundary', () => {
       const r = await applySecurityMiddleware(
         makeReq('/dashboard'),
         'user_browsing',
+        { nonce: TEST_NONCE },
       );
       expect(r.status).toBe(200);
     }
@@ -178,17 +200,21 @@ describe('applySecurityMiddleware — rate-limit boundary', () => {
 
   it('isolates rate-limit buckets per user', async () => {
     for (let i = 0; i < DEFAULT_READ_LIMIT_PER_MIN; i++) {
-      await applySecurityMiddleware(makeReq('/api/applications'), 'user_a');
+      await applySecurityMiddleware(makeReq('/api/applications'), 'user_a', {
+        nonce: TEST_NONCE,
+      });
     }
     const blockedA = await applySecurityMiddleware(
       makeReq('/api/applications'),
       'user_a',
+      { nonce: TEST_NONCE },
     );
     expect(blockedA.status).toBe(429);
 
     const freshB = await applySecurityMiddleware(
       makeReq('/api/applications'),
       'user_b',
+      { nonce: TEST_NONCE },
     );
     expect(freshB.status).toBe(200);
   });
@@ -210,7 +236,9 @@ describe('applySecurityMiddleware — route classification', () => {
     ['/api/discovery', 'read'],
   ])('classifies %s as the %s tier', async (path, expectedTier) => {
     const userId = `user_classify_${expectedTier}_${path}`;
-    const res = await applySecurityMiddleware(makeReq(path), userId);
+    const res = await applySecurityMiddleware(makeReq(path), userId, {
+      nonce: TEST_NONCE,
+    });
     expect(res.status).toBe(200);
     // First call always succeeds; the X-RateLimit-Limit header is only set
     // on 429 responses, so the tier is observed implicitly by exhausting
@@ -219,9 +247,11 @@ describe('applySecurityMiddleware — route classification', () => {
     const limit =
       expectedTier === 'ai' ? DEFAULT_AI_LIMIT_PER_MIN : DEFAULT_READ_LIMIT_PER_MIN;
     for (let i = 1; i < limit; i++) {
-      await applySecurityMiddleware(makeReq(path), userId);
+      await applySecurityMiddleware(makeReq(path), userId, { nonce: TEST_NONCE });
     }
-    const blocked = await applySecurityMiddleware(makeReq(path), userId);
+    const blocked = await applySecurityMiddleware(makeReq(path), userId, {
+      nonce: TEST_NONCE,
+    });
     expect(blocked.status).toBe(429);
     const body = (await blocked.json()) as { tier: string };
     expect(body.tier).toBe(expectedTier);
