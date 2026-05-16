@@ -11,7 +11,8 @@ import {
   AlignmentRequestSchema,
 } from '@/contracts/api';
 import type { SkillsDB } from '@/contracts/models';
-import { runAlignment } from '@/lib/ai';
+import { alignment } from '@/lib/ai';
+import { requireAnthropicKey } from '@/lib/server/anthropic-key';
 import { requireUserId } from '@/lib/server/auth';
 import { fromZodError, jsonError, readJson } from '@/lib/server/response';
 import { readSkillsDB } from '@/lib/server/skills';
@@ -45,20 +46,27 @@ export async function POST(req: Request) {
   if (gate instanceof Response) return gate;
   const userId = gate;
 
+  const keyGate = requireAnthropicKey(req);
+  if (keyGate instanceof Response) return keyGate;
+  const apiKey = keyGate;
+
   const body = await readJson(req);
   if (body instanceof Response) return body;
   const parsed = AlignmentRequestSchema.safeParse(body);
   if (!parsed.success) return fromZodError(parsed.error);
 
   const skillsDB = (await readSkillsDB(userId)) ?? emptySkillsDB(userId);
-  const result = await runAlignment({
-    skillsDB,
-    jobDescription: parsed.data.jobDescription,
-  });
+  const result = await alignment(
+    { skillsDB, jobDescription: parsed.data.jobDescription },
+    { apiKey },
+  );
 
   const validated = AlignmentAnalysisSchema.safeParse(result);
+  // 422 (not 502): the workflow returned a response whose JSON shape failed
+  // contract validation — that is a downstream model-output issue, not an
+  // upstream-gateway failure. Frontend renders a "regenerate" affordance.
   if (!validated.success) {
-    return jsonError(502, 'ai_invalid_response', 'AI workflow returned an unexpected shape.');
+    return jsonError(422, 'ai_invalid_response', 'AI workflow returned an unexpected shape.');
   }
   return NextResponse.json(validated.data);
 }

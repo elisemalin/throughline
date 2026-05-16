@@ -8,9 +8,10 @@ import {
   NinetyDayRequestSchema,
 } from '@/contracts/api';
 import type { Application, SkillsDB } from '@/contracts/models';
-import { runNinetyDay } from '@/lib/ai';
+import { ninetyDay } from '@/lib/ai';
 import { prisma } from '@/lib/db/prisma';
 import { projectApplication } from '@/lib/db/serialize';
+import { requireAnthropicKey } from '@/lib/server/anthropic-key';
 import { requireUserId } from '@/lib/server/auth';
 import { fromZodError, jsonError, readJson } from '@/lib/server/response';
 import { readSkillsDB } from '@/lib/server/skills';
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
   if (gate instanceof Response) return gate;
   const userId = gate;
 
+  const keyGate = requireAnthropicKey(req);
+  if (keyGate instanceof Response) return keyGate;
+  const apiKey = keyGate;
+
   const body = await readJson(req);
   if (body instanceof Response) return body;
   const parsed = NinetyDayRequestSchema.safeParse(body);
@@ -54,7 +59,7 @@ export async function POST(req: Request) {
   const application = projectApplication(appRow) as Application;
   const skillsDB = (await readSkillsDB(userId)) ?? emptySkillsDB(userId);
 
-  const raw = await runNinetyDay({ skillsDB, application });
+  const raw = await ninetyDay({ skillsDB, application }, { apiKey });
 
   const title = `90-day plan for ${application.company || 'draft'}`;
   const created = await prisma.document.create({
