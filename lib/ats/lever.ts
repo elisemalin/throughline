@@ -7,6 +7,8 @@
 import type { AtsAdapter } from '@/contracts/ats';
 import { ATS_ENDPOINTS } from '@/contracts/ats';
 import { atsSlugSchema } from '@/contracts/models';
+import { fetchWithRetry } from './_http';
+import { AtsProviderError } from './errors';
 
 export interface LeverRawJob {
   id: string;
@@ -93,14 +95,18 @@ export const leverAdapter: AtsAdapter<LeverRawJob> = {
   },
 
   async fetchPostings(slug) {
-    const res = await fetch(ATS_ENDPOINTS.lever(slug), {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Lever ${slug}: HTTP ${res.status}`);
+    const res = await fetchWithRetry(
+      ATS_ENDPOINTS.lever(slug),
+      { method: 'GET', headers: { accept: 'application/json' } },
+      { provider: 'lever', slug },
+    );
     const data = (await res.json()) as unknown;
     if (!Array.isArray(data)) {
-      throw new Error(`Lever ${slug}: expected array, got ${typeof data}`);
+      throw new AtsProviderError({
+        provider: 'lever',
+        slug,
+        message: `expected JSON array, got ${typeof data}`,
+      });
     }
     return data as LeverRawJob[];
   },
