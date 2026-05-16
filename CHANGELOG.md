@@ -2,6 +2,34 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/external-adapter/d4] — 2026-05-16
+
+### Added
+- `lib/ats/_telemetry.ts` — `AsyncLocalStorage`-backed sink that captures every retry decision (5xx / 429 / network) inside a `withRetryTelemetry(sink, fn)` scope. Concurrent calls keep their own sinks, so the daily sweep can attribute retries to the row that triggered them.
+- `lib/ats/_http.ts` instrumented — every retry path calls `recordRetry(reason, waitMs)` into the active sink. No behavior change when no sink is installed.
+- `jobs/poll.ts` — `PollResult` and `PollSweepSummary` gained a `retries: RetrySummary` field (`{ fivexx, fourTwentyNine, network, totalBackoffMs }`). Per-row retries roll up into the daily / on-demand sweep summary so an operator can see at a glance whether providers are rate-limiting us or flaking.
+- `scripts/admin/poll-now.ts` — tsx-runnable admin CLI that fires `ats/poll.requested` for a given owner. Sole producer for `atsPollRequestedFunction` until Backend Core wires a route again. `pnpm admin:poll-now <ownerId>` is the entry point.
+- `tests/ats/live/contract-drift.test.ts` — gated on `ATS_LIVE=1`; hits the real Greenhouse / Lever / Ashby boards (`anthropic`, `spotify`, `linear`) and asserts every normalized row passes `NormalizedPostingSchema`. Catches silent provider wire-format drift. Verified locally against all three providers.
+- `.github/workflows/ats-live.yml` — runs the live drift suite on push to `agent/external-adapter/**`, on PRs that touch `lib/ats/**`, and nightly at 07:00 UTC. No secret required (read-only public APIs).
+- `package.json` scripts: `test:ats:live`, `admin:poll-now`.
+- `tests/fixtures/ats/workday/{salesforce,adobe}.json` — real Workday board captures (1,389 + 1,177 jobs) for the future adapter, gated on the spike-results proposal.
+- `contracts/proposals/2026-05-16-external-adapter-job-tags.md` — `[PENDING REVIEW]` proposal to add `tags: string[]` to `NormalizedPosting` + `DiscoveredPosting`. Documents per-provider extraction (Lever `categories`, Ashby `department/team/employmentType`, Greenhouse `departments/offices`).
+- `contracts/proposals/2026-05-16-external-adapter-workday-spike-results.md` — `[PENDING REVIEW]` proposal superseding the Day-3 workday-deferred. The public API works; ship is blocked on three Architect-only contract changes (slug schema, endpoint constructor, postedAt-or-detail-call tradeoff). Captured fixtures sit ready under `tests/fixtures/ats/workday/` for the on-accept implementation.
+
+### Changed
+- `jobs/poll.ts` now imports `ATS_POLL_REQUESTED_EVENT` and `AtsPollRequestedDataSchema` from `/contracts/ats.ts` (the architect accepted the Day-3 proposal). Local copies of both removed. The event handler validates the payload via `AtsPollRequestedDataSchema.safeParse(event.data)` and throws with the first issue message on a malformed payload.
+- `pollOne` now installs a per-row retry sink (`newSink()` + `withRetryTelemetry`) so retries are attributed correctly even when many rows are polled concurrently in the daily sweep.
+
+### Cross-stream coordination
+- The orphaned `atsPollRequestedFunction` now has a sole producer (`scripts/admin/poll-now.ts`). If Backend Core wires a route again, External Adapter does not need to ship anything — the consumer is already in place. Noted in the PR description.
+
+### Contract notes
+- Two `[PENDING REVIEW]` proposals filed (see Added). External Adapter does not modify `/contracts/*.ts` directly.
+
+### Carried over
+- Architect to decide on `job-tags.md` (cheap, unblocks Lever's richer category data) and `workday-spike-results.md` (supersedes workday-deferred; needs slug schema + endpoint constructor changes).
+- Live drift CI workflow runs but the schedule and any failure alerting is unconfigured on the GitHub project; Architect/Foundation may want to wire a notification.
+
 ## [agent/backend-core/d4] — 2026-05-16
 
 ### Added
