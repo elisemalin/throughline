@@ -1,0 +1,56 @@
+# Throughline CI.
+#
+# WHY: Day 1 deliberately excludes DB-dependent jobs (no `prisma migrate`,
+# no end-to-end suite that needs a Postgres connection) so the workflow stays
+# green before Neon credentials land. Integrity, typecheck, and lint are
+# fully static and run on every PR.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          # WHY: integrity.sh uses `origin/main...HEAD` to diff changed files.
+          # Without full history that ref resolves empty and rule 8/10 silently
+          # pass even when contracts/* changed.
+          fetch-depth: 0
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        # Typecheck imports @prisma/client; the client is generated, not
+        # checked in, so it must be produced before tsc runs.
+        run: pnpm prisma:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Integrity (full)
+        run: bash scripts/integrity.sh
+
+      - name: Integrity (diff vs main)
+        if: github.event_name == 'pull_request'
+        run: bash scripts/integrity.sh --diff
