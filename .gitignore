@@ -38,3 +38,6 @@ coverage/
 
 # Storybook
 .storybook-static/
+
+# Lighthouse CI artifacts
+.lhci/

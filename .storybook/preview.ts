@@ -1,8 +1,6 @@
-import type { Preview } from '@storybook/nextjs';
+import type { Preview } from '@storybook/react-vite';
 import '../app/globals.css';
 
-// WHY: every story runs axe-core via addon-a11y. Stories that intentionally
-// violate a rule (none currently) would override `a11y` per-story.
 const preview: Preview = {
   parameters: {
     backgrounds: {
@@ -14,10 +12,7 @@ const preview: Preview = {
     },
     a11y: {
       element: '#storybook-root',
-      manual: false,
-      config: {
-        rules: [],
-      },
+      config: { rules: [] },
     },
     layout: 'fullscreen',
   },
