@@ -112,13 +112,69 @@ describe('POST /api/webhooks/clerk', () => {
     expect((await res.json()).skipped).toBe('no_primary_email');
   });
 
-  it('acks user.deleted without writing', async () => {
+  it('deletes the User row on user.deleted (Prisma cascades owned rows)', async () => {
     verifyMock.mockReturnValueOnce({
       type: 'user.deleted',
       data: { id: 'user_clerk_3' },
     });
+    mPrisma.user.deleteMany.mockResolvedValueOnce({ count: 1 });
+
     const res = await POST(makeWebhookRequest({}));
     expect(res.status).toBe(200);
     expect(mPrisma.user.upsert).not.toHaveBeenCalled();
+    expect(mPrisma.user.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'user_clerk_3' },
+    });
+  });
+
+  it('treats user.deleted for a row that never existed as idempotent', async () => {
+    verifyMock.mockReturnValueOnce({
+      type: 'user.deleted',
+      data: { id: 'user_clerk_404' },
+    });
+    mPrisma.user.deleteMany.mockResolvedValueOnce({ count: 0 });
+
+    const res = await POST(makeWebhookRequest({}));
+    expect(res.status).toBe(200);
+  });
+
+  it('retries once on a transient Prisma error and returns 200', async () => {
+    verifyMock.mockReturnValueOnce({
+      type: 'user.created',
+      data: {
+        id: 'user_clerk_retry',
+        email_addresses: [{ id: 'e1', email_address: 'r@example.com' }],
+        primary_email_address_id: 'e1',
+      },
+    });
+    mPrisma.user.upsert
+      .mockRejectedValueOnce(Object.assign(new Error('conn'), { code: 'P1001' }))
+      .mockResolvedValueOnce({
+        id: 'user_clerk_retry',
+        email: 'r@example.com',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+    const res = await POST(makeWebhookRequest({}));
+    expect(res.status).toBe(200);
+    expect(mPrisma.user.upsert).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns 503 webhook_persist_failed when both attempts fail with a transient error', async () => {
+    verifyMock.mockReturnValueOnce({
+      type: 'user.created',
+      data: {
+        id: 'user_clerk_503',
+        email_addresses: [{ id: 'e1', email_address: 'x@example.com' }],
+        primary_email_address_id: 'e1',
+      },
+    });
+    const transient = Object.assign(new Error('still down'), { code: 'P1017' });
+    mPrisma.user.upsert.mockRejectedValueOnce(transient).mockRejectedValueOnce(transient);
+
+    const res = await POST(makeWebhookRequest({}));
+    expect(res.status).toBe(503);
+    expect((await res.json()).error.code).toBe('webhook_persist_failed');
   });
 });

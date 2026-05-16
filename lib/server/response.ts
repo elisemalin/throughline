@@ -5,21 +5,58 @@
 // Frontend Agent's error-handling code path identical across routes, and a
 // single Zod-error projector ensures 400 responses describe what failed in a
 // form the client can render without re-parsing Zod's internal issue tree.
+//
+// `code` is a typed union (not a free-form string) so a new emitted code is a
+// typecheck error until it's added to the registry. Frontend can switch on the
+// code exhaustively to render targeted UI ("regenerate" for ai_invalid_response,
+// "sign in" for unauthorized, etc.) without string matching.
 
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import type { ZodError } from 'zod';
 
-type ApiErrorBody = {
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-};
+// API_ERROR_CODES is the closed set of error.code values any /api/* handler
+// may emit. Adding a new code is a deliberate act: append here, then call
+// jsonError with it. Removing one is a contract break — callers may switch
+// on these values.
+export const API_ERROR_CODES = [
+  // 400 — bad input from the caller
+  'invalid_json',
+  'invalid_request',
+  'invalid_signature',
+  'missing_anthropic_key',
+  'missing_signature_headers',
+  // 401 — no session
+  'unauthorized',
+  // 404 — owned-row lookup miss
+  'application_not_found',
+  'posting_not_found',
+  'skills_db_not_found',
+  // 422 — request well-formed, downstream couldn't be processed
+  'ai_invalid_response',
+  // 500 — server-side misconfiguration or unrecoverable failure
+  'serialization_failed',
+  'webhook_misconfigured',
+  'webhook_persist_failed',
+] as const;
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+export const ApiErrorBodySchema = z
+  .object({
+    error: z
+      .object({
+        code: z.enum(API_ERROR_CODES),
+        message: z.string(),
+        details: z.unknown().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+export type ApiErrorBody = z.infer<typeof ApiErrorBodySchema>;
 
 export function jsonError(
   status: number,
-  code: string,
+  code: ApiErrorCode,
   message?: string,
   details?: unknown,
 ): NextResponse<ApiErrorBody> {

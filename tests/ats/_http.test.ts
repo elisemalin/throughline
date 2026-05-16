@@ -12,6 +12,11 @@ import {
   fetchWithRetry,
 } from '@/lib/ats/_http';
 import { AtsProviderError } from '@/lib/ats/errors';
+import {
+  newSink,
+  summarizeRetries,
+  withRetryTelemetry,
+} from '@/lib/ats/_telemetry';
 
 const sleepCalls: number[] = [];
 
@@ -106,5 +111,72 @@ describe('fetchWithRetry', () => {
       status: 503,
       attempts: 2,
     });
+  });
+});
+
+describe('retry telemetry sink (AsyncLocalStorage)', () => {
+  it('captures 5xx retries inside a withRetryTelemetry scope', async () => {
+    chainFetch([makeResponse(503), makeResponse(200)]);
+    const sink = newSink();
+    await withRetryTelemetry(sink, () =>
+      fetchWithRetry('https://x', {}, { provider: 'greenhouse', slug: 's' }),
+    );
+    expect(summarizeRetries(sink)).toEqual({
+      fivexx: 1,
+      fourTwentyNine: 0,
+      network: 0,
+      totalBackoffMs: RETRY_5XX_DELAY_MS,
+    });
+  });
+
+  it('captures 429 retries with the actual wait', async () => {
+    chainFetch([makeResponse(429, { 'retry-after': '4' }), makeResponse(200)]);
+    const sink = newSink();
+    await withRetryTelemetry(sink, () =>
+      fetchWithRetry('https://x', {}, { provider: 'ashby', slug: 's' }),
+    );
+    expect(summarizeRetries(sink)).toEqual({
+      fivexx: 0,
+      fourTwentyNine: 1,
+      network: 0,
+      totalBackoffMs: 4_000,
+    });
+  });
+
+  it('records nothing when no retry happens', async () => {
+    chainFetch([makeResponse(200)]);
+    const sink = newSink();
+    await withRetryTelemetry(sink, () =>
+      fetchWithRetry('https://x', {}, { provider: 'greenhouse', slug: 's' }),
+    );
+    expect(summarizeRetries(sink)).toEqual({
+      fivexx: 0,
+      fourTwentyNine: 0,
+      network: 0,
+      totalBackoffMs: 0,
+    });
+  });
+
+  it('keeps concurrent calls isolated (per-call sinks)', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(makeResponse(503))
+      .mockResolvedValueOnce(makeResponse(200))
+      .mockResolvedValueOnce(makeResponse(200));
+    vi.stubGlobal('fetch', fetchMock);
+    const sinkA = newSink();
+    const sinkB = newSink();
+    await Promise.all([
+      withRetryTelemetry(sinkA, () =>
+        fetchWithRetry('https://x', {}, { provider: 'greenhouse', slug: 'a' }),
+      ),
+      withRetryTelemetry(sinkB, () =>
+        fetchWithRetry('https://x', {}, { provider: 'lever', slug: 'b' }),
+      ),
+    ]);
+    // Total recorded retries across both sinks equals 1 (only one 503 was
+    // served); AsyncLocalStorage must keep the retries scoped to one sink
+    // rather than smearing across both.
+    expect(summarizeRetries(sinkA).fivexx + summarizeRetries(sinkB).fivexx).toBe(1);
   });
 });
