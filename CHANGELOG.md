@@ -2,6 +2,29 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/backend-core/d4] — 2026-05-16
+
+### Added
+- `lib/server/response.ts`: `API_ERROR_CODES` const tuple, `ApiErrorBodySchema` Zod schema, exported `ApiErrorCode` type. `jsonError(status, code, ...)` now takes a typed `code: ApiErrorCode` — accidental typos at call sites fail typecheck. `webhook_persist_failed` added for the 503 transient-failure path.
+- `lib/server/auth.ts`: `requireUserId` JIT fallback. After the Clerk session resolves, the helper reads the User row; on miss, creates a placeholder `{ id, email: '<id>@pending.clerk' }`. Exported `ensureUserRow` and `pendingEmail` for test reuse. P2002 race-collisions swallowed; non-unique errors re-thrown.
+- Webhook resilience: `withTransientRetry` one-shot retry on P1001/P1002/P1008/P1017 after a 100ms back-off; 503 `webhook_persist_failed` on persistent failure. `user.deleted` event now does `deleteMany` on User (cascade per the Prisma schema's `onDelete: Cascade`); idempotent on duplicate deliveries.
+- `/api/discovery/poll`: `newPostings` populated from `count(DiscoveredPosting where status='new')` — Frontend's unseen-count badge.
+- Real-Neon api integration suite at `/tests/api/integration/` (5 files, 10 tests). Covers Application CRUD + events, applications/[id]/alignment persistence, skills/ingest upsert idempotence, watchlist add with adapter stubbed, webhook upsert + user.deleted cascade.
+- `vitest.api.integration.config.ts` + `pnpm test:api:integration` script. `tests/api/integration/_env.ts` setupFile resolves `DATABASE_URL_TEST` (preferred) or falls back to `DATABASE_URL` with a printed warning; suite skips cleanly when neither is set.
+- Unit suite additions: `tests/api/auth-jit.test.ts` (6 tests covering the JIT fallback paths and P2002 race handling), `tests/api/error-codes.test.ts` (4 tests asserting every code in the registry parses against `ApiErrorBodySchema`). Webhook unit test extended with transient-retry, 503-on-persistent-failure, user.deleted cascade, duplicate-delivery idempotence.
+
+### Changed
+- `tests/api/_setup.ts`: added `prisma.user.findUnique`, `prisma.user.create`, `prisma.user.deleteMany` to the mocked surface.
+- `tests/api/_helpers.ts`: `signedIn()` now also mocks `prisma.user.findUnique` to return the test owner row by default (so existing tests don't pay the JIT create path). Tests exercising the cold-start path clear and re-mock.
+- `package.json`: `test:api` `--exclude '**/integration/**'` so the unit run does not surface the gated integration suite as "skipped". Added `test:api:integration`.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` and `/lib/mock-api.ts` untouched.
+
+### Carried over
+- Real-Neon execution path is wired but unexecuted on this branch (no local `DATABASE_URL_TEST`). CI workflow gate will run it once the secret lands.
+- Cascade-delete policy on `user.deleted` deletes ALL owned rows. If Day-5 product calls for soft-delete or retention, the route's body is the single edit site.
+
 ## [agent/frontend/d3] — 2026-05-16
 
 ### Added

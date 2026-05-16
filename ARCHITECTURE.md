@@ -170,6 +170,34 @@ The split-return shape (helper returns either `Response` or a typed value) keeps
 ### Clerk webhook receiver at `/api/webhooks/clerk` provisions User rows JIT
 
 **Why:** Every Backend Core write that sets `ownerId` to the Clerk userId would fail on the foreign-key constraint without a corresponding `User` row. Rather than upserting User on every request (one round-trip per call), the webhook listens for `user.created` / `user.updated` events from Clerk and upserts at sign-up time. The route is public (added to `isPublicRoute` in `middleware.ts`); Svix signature verification inside the handler (`new Webhook(secret).verify(body, headers)`) is the real defense. New env var: `CLERK_WEBHOOK_SIGNING_SECRET`.
+
+### Day-4 `requireUserId` JIT fallback (placeholder email)
+
+**Why:** The Clerk webhook is eventually consistent — a freshly signed-up user can issue an authenticated request before the signed POST arrives, and downstream Prisma writes that FK on `ownerId` would 500 with P2003. Day 4 adds a JIT fallback inside `requireUserId`: after the Clerk session resolves, the helper reads `prisma.user.findUnique({ id: userId })`; if missing, it creates a placeholder row `{ id: userId, email: '<userId>@pending.clerk' }`. The webhook's later POST upserts the real email over the placeholder. Cost: one indexed PK read per authenticated request; one write per first-request-per-user. P2002 collisions from concurrent requests for the same brand-new user are caught and treated as success.
+
+### Day-4 Webhook resilience: transient retry + cascade delete
+
+**Why:** Clerk retries webhook deliveries on non-2xx responses. A transient Prisma connection error (P1001 / P1002 / P1008 / P1017 — Neon serverless cold-start window) would otherwise burn a retry slot. Day 4 wraps the upsert in a one-shot retry after a 100ms back-off; on persistent failure it returns 503 `webhook_persist_failed` so Clerk's queue back-off picks it up. Non-transient errors (P2002, P2003, P2025) re-throw — those would loop forever, so we let the route 500 and rely on Clerk's delivery dashboard to surface the bad event.
+
+`user.deleted` is no longer ack-only: it `deleteMany({ where: { id } })` against the User row. Prisma cascades through `onDelete: Cascade` on Application, Document, SkillsDB, WatchlistCompany, and DiscoveredPosting. `deleteMany` (vs `delete`) makes a duplicate-delivery delete a no-op rather than a P2025 not-found.
+
+### Day-4 Typed error code registry in `lib/server/response.ts`
+
+**Why:** Frontend was hand-matching `error.code` strings to render targeted UI ("regenerate" affordance for AI failures, "sign in" link for unauthorized, etc.). A typo on either side would silently fall through to the generic error banner. The Day-4 `API_ERROR_CODES` tuple is the closed set of codes any handler may emit; `jsonError` takes `code: ApiErrorCode` (typed, not free-form string), and the response body parses against `ApiErrorBodySchema`. Adding a code is a deliberate one-line append; removing one is a contract break — switch sites stay exhaustive.
+
+### Day-4 `/api/discovery/poll` newPostings is the unseen-count badge
+
+**Why:** Day 3 left `newPostings: 0` as a placeholder. Day 4 populates it with `count(DiscoveredPosting where ownerId AND status='new')` — the same value Frontend renders as the badge next to the Discovery nav entry. The semantic shift: "new since last poll trigger" → "new since the user last viewed", which is the more durably useful number now that there is no on-demand poll trigger.
+
+### Day-4 api integration suite under `tests/api/integration/`
+
+**Why:** Mocked Prisma covers the unit shape of every handler, but it can't catch FK violations, cascade-delete behavior, or Prisma's actual JSON-column round-trip semantics. Day 4 adds a real-Neon integration suite running the five highest-stakes routes against a configured test branch. Convention:
+
+- Gate: `DATABASE_URL_TEST` (preferred — a dedicated Neon branch) or `DATABASE_URL` (fallback with warning). Neither set → suite skips cleanly.
+- Owner namespace: every seed row goes under `User.id` starting with `api-int-test-`. Teardown is one `deleteMany`; cascade handles owned rows.
+- Config: `vitest.api.integration.config.ts` (no Prisma mock). Script: `pnpm test:api:integration`.
+- Suites covered: applications CRUD + events, applications/[id]/alignment persistence, skills/ingest upsert idempotence, watchlist add (with adapter stubbed), webhook upsert/delete cascade.
+
 ### ATS adapter retry policy (Day 3)
 
 **Why:** Day 2 shipped `fetchPostings` as "throw on any non-2xx" — fine for the unit suite but every transient 5xx in production would lose the entire row's pass that day. The poller's 2-second per-provider gap is a politeness floor, not a retry strategy; without an explicit back-off, a five-second outage at Greenhouse loses 100% of Greenhouse postings until the next 06:00 UTC run.
@@ -296,3 +324,18 @@ Shipped on branch `agent/backend-core/d3`:
 
 - **AI Integration Day-3 PR**: when `SkillsIngestRawSchema` gains a `warnings: string[]` field, update `/api/skills/ingest` to forward those warnings in the response instead of the current `warnings: []`. The TODO is marked in-line.
 - **Foundation Agent**: `middleware.ts` `isPublicRoute` matcher gained `/api/webhooks/clerk`. Coordinated via this PR description.
+
+---
+
+## Day 4 deliverables (Backend Core Agent)
+
+Shipped on branch `agent/backend-core/d4`:
+
+- Typed error response shape: `API_ERROR_CODES` const tuple + `ApiErrorBodySchema` Zod schema + `ApiErrorCode` exported type in `lib/server/response.ts`. `jsonError(status, code, ...)` parameter is now typed to the union — accidental typos at call sites fail typecheck.
+- `requireUserId` JIT fallback: reads the User row; on miss, creates a placeholder `<userId>@pending.clerk` row so downstream FK writes succeed before the Clerk webhook arrives. P2002 race-collisions swallowed.
+- Webhook resilience:
+  - `user.created` / `user.updated` upserts retry once after 100ms on transient Prisma errors (P1001/P1002/P1008/P1017); persistent failure returns 503 `webhook_persist_failed`.
+  - `user.deleted` now performs a `deleteMany` on the User row; Prisma cascades owned rows. Idempotent on duplicate deliveries.
+- `/api/discovery/poll` `newPostings` populated from `count(DiscoveredPosting where status='new')` — the badge value Frontend renders next to the Discovery nav entry.
+- Real-Neon integration suite under `/tests/api/integration/` (5 files, 10 tests). Gated on `DATABASE_URL_TEST` with a `DATABASE_URL` fallback; skips cleanly when neither is set. New config `vitest.api.integration.config.ts`; new script `pnpm test:api:integration`. Owner namespace `api-int-test-<label>-<random>` ensures concurrent test files do not collide; teardown is one cascade-delete.
+- Unit suite grew to 18 files, 96 tests. New files: `auth-jit.test.ts` (JIT fallback paths), `error-codes.test.ts` (every code in the registry parses against `ApiErrorBodySchema`). Existing `webhooks-clerk.test.ts` extended with transient-retry, 503-on-persistent-failure, user.deleted cascade, duplicate-delete idempotence.
