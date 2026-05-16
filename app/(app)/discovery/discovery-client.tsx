@@ -153,11 +153,14 @@ export function DiscoveryClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-        <div>
-          <h1 className="text-4xl text-stone-100 font-display">Discovery</h1>
-          <p className="text-stone-500 text-sm mt-1">
+    <div className="space-y-10">
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <div className="space-y-3">
+          <div className="caption-label text-stone-500">Polled overnight</div>
+          <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
+            Discovery
+          </h1>
+          <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
             Fresh postings from your watchlist, scored against your Skills DB.
           </p>
         </div>
@@ -177,7 +180,7 @@ export function DiscoveryClient() {
         </div>
       </header>
 
-      <div className="flex gap-2" role="tablist" aria-label="Discovery view">
+      <div className="flex gap-1 border-b border-stone-100/5 pb-1" role="tablist" aria-label="Discovery view">
         {(['queue', 'watchlist'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -185,20 +188,21 @@ export function DiscoveryClient() {
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`text-xs uppercase tracking-[0.2em] font-mono px-3 py-2 rounded-sm border ${
-              tab === t
-                ? 'border-amber-200/60 text-amber-200 bg-amber-900/20'
-                : 'border-stone-800 text-stone-500 hover:text-stone-200'
+            className={`relative caption-label px-4 py-2 transition-colors ${
+              tab === t ? 'text-amber-200' : 'text-stone-600 hover:text-stone-300'
             }`}
           >
             {t === 'queue' ? 'Queue' : 'Watchlist'}
+            {tab === t && (
+              <span aria-hidden className="absolute left-4 right-4 -bottom-1 h-[2px] bg-amber-200 rounded-full" />
+            )}
           </button>
         ))}
       </div>
 
       {tab === 'queue' ? (
         <>
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Status filter">
+          <div className="flex flex-wrap gap-3" role="tablist" aria-label="Status filter">
             {STATUS_FILTERS.map((f) => (
               <button
                 key={f.id}
@@ -206,10 +210,10 @@ export function DiscoveryClient() {
                 role="tab"
                 aria-selected={filter === f.id}
                 onClick={() => setFilter(f.id)}
-                className={`text-[10px] uppercase tracking-[0.2em] font-mono px-2.5 py-1.5 rounded-sm border ${
+                className={`caption-label px-3 py-1.5 rounded-full ring-1 transition-all ${
                   filter === f.id
-                    ? 'border-amber-200/60 text-amber-200 bg-amber-900/20'
-                    : 'border-stone-800 text-stone-500 hover:text-stone-200'
+                    ? 'text-amber-200 bg-amber-950/30 ring-amber-900/50'
+                    : 'text-stone-600 ring-stone-800/50 hover:text-stone-300 hover:ring-stone-700'
                 }`}
               >
                 {f.label}
@@ -218,70 +222,100 @@ export function DiscoveryClient() {
           </div>
 
           {filteredPostings.length === 0 ? (
-            <Card className="p-10 text-center">
-              <Compass size={20} className="text-stone-600 mx-auto mb-3" aria-hidden />
-              <p className="text-stone-500 text-sm">No postings under this filter.</p>
+            <Card className="px-8 py-14 text-center space-y-4">
+              <Compass size={28} className="text-amber-200/40 mx-auto" aria-hidden />
+              <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+                {postings.length === 0 ? 'No postings yet.' : 'Caught up.'}
+              </p>
+              <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
+                Add a company to widen the feed.
+              </p>
             </Card>
           ) : (
-            <ul className="space-y-2">
-              {filteredPostings.map((p) => (
-                <li key={p.id}>
-                  <Card className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-stone-100">{p.role}</div>
-                        <div className="text-xs text-stone-500 font-mono">
-                          {p.company} · {p.location}
-                          {p.remote ? ' · Remote' : ''}
-                          {p.salaryRange ? ` · ${p.salaryRange}` : ''}
+            <ul className="space-y-3">
+              {filteredPostings.map((p, idx) => {
+                const isFeatured =
+                  idx === 0 &&
+                  filter === 'new' &&
+                  typeof p.alignmentScore === 'number' &&
+                  p.alignmentScore >= 85;
+                const accent: 'emerald' | 'amber' | 'none' =
+                  (p.alignmentScore ?? 0) >= 85
+                    ? 'emerald'
+                    : (p.alignmentScore ?? 0) >= 70
+                      ? 'amber'
+                      : 'none';
+                return (
+                  <li key={p.id}>
+                    <Card
+                      accent={accent}
+                      className={isFeatured ? 'pl-7 pr-6 py-6' : 'pl-6 pr-5 py-5'}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className={`${isFeatured ? 'text-2xl font-display tracking-tight' : 'text-base'} text-stone-50`}
+                          >
+                            {p.role}
+                          </div>
+                          <div className="caption-label text-stone-500 mt-1.5">
+                            {p.company} &middot; {p.location}
+                            {p.remote ? ' · Remote' : ''}
+                            {p.salaryRange ? ` · ${p.salaryRange}` : ''}
+                          </div>
+                          <p
+                            className={`text-sm text-stone-400 mt-3 leading-relaxed ${isFeatured ? '' : 'line-clamp-2'}`}
+                          >
+                            {p.jobDescription}
+                          </p>
                         </div>
-                        <p className="text-xs text-stone-400 mt-2 line-clamp-3">
-                          {p.jobDescription}
-                        </p>
+                        {typeof p.alignmentScore === 'number' && (
+                          <div className="text-right">
+                            <div className="tab-nums text-3xl text-amber-200 font-display">
+                              {p.alignmentScore}
+                            </div>
+                            <div className="caption-label text-amber-200/60 mt-0.5">Fit</div>
+                          </div>
+                        )}
                       </div>
-                      {typeof p.alignmentScore === 'number' && (
-                        <span className="text-sm tabular-nums font-mono text-amber-200">
-                          {p.alignmentScore}%
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 mt-3">
-                      <Pill tone={p.status === 'new' ? 'accent' : 'muted'}>{p.status}</Pill>
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] uppercase tracking-[0.2em] text-stone-400 hover:text-amber-200 font-mono inline-flex items-center gap-1"
-                      >
-                        Open posting <ExternalLink size={11} aria-hidden />
-                      </a>
-                      <div className="flex-1" />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleMark(p.id, 'dismissed')}
-                      >
-                        Dismiss
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleMark(p.id, 'viewed')}
-                      >
-                        Mark viewed
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleDraft(p.id)}
-                        disabled={createApplication.isPending || p.status === 'drafted'}
-                        data-testid={`discovery-draft-${p.id}`}
-                      >
-                        {p.status === 'drafted' ? 'Drafted' : 'Draft application'}
-                      </Button>
-                    </div>
-                  </Card>
-                </li>
-              ))}
+                      <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-100/5">
+                        <Pill tone={p.status === 'new' ? 'accent' : 'muted'}>{p.status}</Pill>
+                        <a
+                          href={p.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="caption-label text-stone-400 hover:text-amber-200 inline-flex items-center gap-1.5 transition-colors"
+                        >
+                          Open posting <ExternalLink size={11} aria-hidden />
+                        </a>
+                        <div className="flex-1" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleMark(p.id, 'dismissed')}
+                        >
+                          Dismiss
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleMark(p.id, 'viewed')}
+                        >
+                          Mark viewed
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleDraft(p.id)}
+                          disabled={createApplication.isPending || p.status === 'drafted'}
+                          data-testid={`discovery-draft-${p.id}`}
+                        >
+                          {p.status === 'drafted' ? 'Drafted' : 'Draft application'}
+                        </Button>
+                      </div>
+                    </Card>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </>

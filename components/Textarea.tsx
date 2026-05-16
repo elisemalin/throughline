@@ -1,7 +1,8 @@
 'use client';
 
-// Multi-line text input matching the prototype's dark form treatment.
-// Lifted from prototype/Throughline.jsx lines 827-837.
+// Textarea — boxed by default because multi-line input genuinely needs
+// a frame to read, but the frame is the new layered surface (ring +
+// gradient bg) rather than the old solid-border stone block.
 
 import type { TextareaHTMLAttributes } from 'react';
 
@@ -9,8 +10,15 @@ export type TextareaProps = {
   mono?: boolean;
 } & TextareaHTMLAttributes<HTMLTextAreaElement>;
 
-const base =
-  'w-full bg-stone-900/80 border border-stone-800 rounded-sm px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-200/60 focus:bg-stone-900 transition-colors resize-none';
+const base = [
+  'w-full bg-gradient-to-b from-stone-900/30 to-stone-950/40',
+  'ring-1 ring-stone-800/80 rounded-md',
+  'px-4 py-3 text-stone-100 placeholder-stone-600',
+  'resize-none',
+  'transition-[box-shadow,ring,background-color] duration-150',
+  'focus:outline-none focus:ring-amber-200/50 focus:bg-stone-950/60',
+  'hover:ring-stone-700',
+].join(' ');
 
 export function Textarea({
   mono = false,
@@ -21,7 +29,7 @@ export function Textarea({
   return (
     <textarea
       rows={rows}
-      className={`${base} ${mono ? 'font-mono text-sm' : 'text-sm'} ${className}`}
+      className={`${base} ${mono ? 'tab-nums text-sm tracking-[0.01em]' : 'text-sm leading-relaxed'} ${className}`}
       {...rest}
     />
   );

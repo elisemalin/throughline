@@ -77,11 +77,14 @@ export function DocumentsClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-4xl text-stone-100 font-display">Documents</h1>
-        <p className="text-stone-500 text-sm mt-1">
-          Resumes, cover letters, 90-day plans, and dossiers — generated from your Skills DB.
+    <div className="space-y-10">
+      <header className="space-y-3">
+        <div className="caption-label text-stone-500">Generated artifacts</div>
+        <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
+          Documents
+        </h1>
+        <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
+          Resumes, cover letters, 90-day plans, and dossiers — pulled from your Skills DB.
         </p>
       </header>
 
@@ -155,10 +158,13 @@ export function DocumentsClient() {
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <Card className="p-10 text-center">
-          <FileText size={20} className="text-stone-600 mx-auto mb-3" aria-hidden />
-          <p className="text-stone-500 text-sm">
-            No documents yet. Generate one above.
+        <Card className="px-8 py-14 text-center space-y-4">
+          <FileText size={28} className="text-amber-200/40 mx-auto" aria-hidden />
+          <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+            Generate a resume above.
+          </p>
+          <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
+            The Skills DB does the lifting.
           </p>
         </Card>
       )}

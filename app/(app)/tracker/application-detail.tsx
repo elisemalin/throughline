@@ -10,7 +10,7 @@
 // - Events timeline: GET /api/applications/:id/events; refetches on
 //   mutation success.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { Button, Card, Field, Input, Modal, Pill, SectionLabel, Textarea } from '@/components';
 import type { Application, ApplicationStatus } from '@/contracts/models';
@@ -60,7 +60,10 @@ export function ApplicationDetail({ application, onClose }: Props) {
     setFollowUp(application.followUpDate ?? '');
   }, [application.id, application.followUpDate]);
 
+  const pendingNotesRef = useRef<string | null>(null);
+
   const persistNotes = useDebouncedCallback((next: string) => {
+    pendingNotesRef.current = null;
     update.mutate(
       { id: application.id, patch: { notes: next || undefined } },
       {
@@ -75,8 +78,38 @@ export function ApplicationDetail({ application, onClose }: Props) {
 
   function onNotesChange(value: string) {
     setNotes(value);
+    pendingNotesRef.current = value;
     persistNotes(value);
   }
+
+  // WHY beforeunload + visibilitychange: if the user navigates away or
+  // backgrounds the tab while a debounced PATCH is still queued, the in-
+  // memory state is correct but the server snapshot lags by up to 800ms.
+  // We synchronously fire one final PATCH so the next page load reads what
+  // the user actually typed. We use mutateAsync(...).catch on unload (the
+  // browser may cut the request short) and TanStack's fire-and-forget;
+  // there is nothing more we can do at that point.
+  useEffect(() => {
+    function flush() {
+      const pending = pendingNotesRef.current;
+      if (pending === null) return;
+      pendingNotesRef.current = null;
+      update.mutate({
+        id: application.id,
+        patch: { notes: pending || undefined },
+      });
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') flush();
+    }
+    window.addEventListener('beforeunload', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+      flush();
+    };
+  }, [application.id, update]);
 
   function persistFollowUp() {
     if (followUp === (application.followUpDate ?? '')) return;

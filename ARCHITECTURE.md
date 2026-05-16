@@ -288,7 +288,7 @@ Shipped on branch `agent/backend-core/d2`:
 | Package | Why |
 |---|---|
 | `@storybook/react-vite` 9.1.x + `vite` ^6 + `@vitejs/plugin-react` ^4 | Replaces `@storybook/nextjs`. Root cause of the Storybook regression: `@storybook/builder-webpack5` (still shipped by 9.x) calls `cache.shutdown` through a `Hook.tap` that Next 15.5's bundled webpack no longer exposes, so a clean install of `@storybook/nextjs` 9 produces `Cannot read properties of undefined (reading 'tap')`. None of our stories import `next/*` primitives, so the Vite builder is a clean swap. `viteFinal` mirrors the tsconfig `@/*` alias. |
-| `@lhci/cli` 0.15.x | Drives `pnpm test:lighthouse`. `lighthouserc.json` boots `next dev`, fetches `/sign-in`, asserts 90+ on perf / a11y / best-practices / SEO. Authenticated-route coverage unblocks on `CI_LIVE_CLERK=1`. |
+| `@lhci/cli` 0.15.x | Drives `pnpm test:lighthouse`. `lighthouserc.json` boots `next dev`, fetches `/sign-in`, asserts 90+ on perf / a11y / best-practices / SEO. Authenticated-route coverage unblocks on `CI_LIVE_CLERK=1`. Day 4 added a GitHub Actions workflow (`.github/workflows/lighthouse.yml`) that runs the script on every PR with placeholder Clerk keys. |
 
 ### Decision — Italiana wordmark + Fraunces display
 
@@ -298,7 +298,13 @@ Shipped on branch `agent/backend-core/d2`:
 
 ### Decision — frontend-local `apiKeyMode` until contract proposal lands
 
-**Why:** Security Agent's `noPassphraseFallback` deliberately produces the same on-disk shape as the strong path. The UI must know which mode wrote the saved key (the unlock paths differ). `ApiKeyMeta` in `/contracts/storage.ts` has no `mode` field. Filed `/contracts/proposals/2026-05-16-frontend-apikey-mode.md` (PENDING REVIEW); the interim storage at `throughline:apiKeyMode` folds into `apiKeyMeta` in one commit once accepted.
+**Why:** Security Agent's `noPassphraseFallback` deliberately produces the same on-disk shape as the strong path. The UI must know which mode wrote the saved key (the unlock paths differ). `ApiKeyMeta` in `/contracts/storage.ts` has no `mode` field. Filed `/contracts/proposals/2026-05-16-frontend-apikey-mode.md` (ACCEPTED on main); on Day 4 the frontend-local `throughline:apiKeyMode` shim was removed and the store reads `meta.mode` directly.
+
+### Decision — single-serif type system (Day 4)
+
+**Why:** Day 3 swapped the display font to Fraunces but kept DM Sans + JetBrains Mono for everything else. The user pushed back: that still felt "obviously coded with Claude agents" — the body face was a generic geometric sans and the mono captions read as a default Tailwind / shadcn caption. Day 4 collapses the type system to two families total — Italiana (wordmark only) and Fraunces (everything else, including what used to be mono captions). Tailwind's `font-sans` and `font-mono` map to the same Fraunces variable so any leftover utility class cannot silently revert to system fonts. The Fraunces variable axes (SOFT + opsz) are tuned per use case in `globals.css`: body sits at SOFT 50 / opsz 14, display at SOFT 80 / opsz 144, captions at opsz 12 with wide tracking and weight 500.
+
+**Cost:** Mono digit columns now rely on Fraunces' tabular-nums OpenType feature (`font-variant-numeric: tabular-nums`) rather than a mono typeface. Lining-nums are honored. No mono-coded look in URLs / slugs / key fingerprints, but the editorial-press-style is the intentional outcome.
 | `storybook` 9.x + `@storybook/nextjs` 9.x + `@storybook/addon-a11y` 9.x | Component documentation + per-story axe-core run. Pinned to Storybook 9 because the 8.x line and Next 15.5 + React 19 collide on a webpack `Cannot read properties of undefined (reading 'tap')` error. |
 
 ---

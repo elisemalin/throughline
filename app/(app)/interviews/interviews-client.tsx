@@ -83,10 +83,13 @@ export function InterviewsClient() {
     ) ?? [];
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-4xl text-stone-100 font-display">Interviews</h1>
-        <p className="text-stone-500 text-sm mt-1">
+    <div className="space-y-10">
+      <header className="space-y-3">
+        <div className="caption-label text-stone-500">Rehearsal room</div>
+        <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
+          Interviews
+        </h1>
+        <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
           Practice with the mock interviewer or rehearse the STAR stories your Skills DB
           generates.
         </p>
@@ -186,10 +189,13 @@ export function InterviewsClient() {
       {tab === 'stories' && (
         <>
           {stories.length === 0 ? (
-            <Card className="p-10 text-center">
-              <MessageSquare size={20} className="text-stone-600 mx-auto mb-3" aria-hidden />
-              <p className="text-stone-500 text-sm">
-                Import your Skills DB to see STAR stories.
+            <Card className="px-8 py-14 text-center space-y-4">
+              <MessageSquare size={28} className="text-amber-200/40 mx-auto" aria-hidden />
+              <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+                Add a project to your Skills DB.
+              </p>
+              <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
+                The stories write themselves.
               </p>
             </Card>
           ) : (

@@ -15,6 +15,7 @@
     "test:lighthouse": "lhci autorun --config=./lighthouserc.json",
     "test:api": "vitest run --config=vitest.config.ts tests/api --exclude '**/integration/**'",
     "test:api:integration": "vitest run --config=vitest.api.integration.config.ts",
+    "test:components": "vitest run --config=vitest.config.ts tests/components",
     "test:security": "vitest run --config=vitest.config.ts tests/security --exclude tests/security/**/*.integration.test.ts",
     "test:security:integration": "vitest run --config=vitest.config.ts tests/security/rate-limit.integration.test.ts",
     "test:ai": "vitest run --config=vitest.config.ts tests/ai",

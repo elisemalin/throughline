@@ -15,6 +15,7 @@ export default defineConfig({
       'tests/ai/**/*.test.ts',
       'tests/ats/**/*.test.ts',
       'tests/api/**/*.test.ts',
+      'tests/components/**/*.test.ts',
     ],
     globals: false,
     pool: 'forks',

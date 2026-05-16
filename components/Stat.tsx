@@ -1,28 +1,54 @@
-// Numeric KPI tile used on the Dashboard. Wraps Card.
-// Lifted from prototype/Throughline.jsx lines 761-776.
+// Numeric KPI tile used on the Dashboard. Day 4 introduces explicit
+// weight differentiation: `prominence="primary"` tiles get the large
+// numeral + accent bar + warm radial background; `prominence="quiet"`
+// tiles render at a smaller display size and dim copy so they hold
+// their place in the grid without competing.
 
 import type { ReactNode } from 'react';
 import { Card } from './Card';
+
+export type StatProminence = 'primary' | 'quiet';
 
 export type StatProps = {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
-  accent?: boolean;
+  prominence?: StatProminence;
+  accent?: boolean; // back-compat shorthand for prominence='primary'
 };
 
-export function Stat({ label, value, sub, accent = false }: StatProps) {
+export function Stat({
+  label,
+  value,
+  sub,
+  prominence,
+  accent = false,
+}: StatProps) {
+  const isPrimary = prominence === 'primary' || accent;
   return (
-    <Card className="p-5">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono mb-2">
+    <Card
+      accent={isPrimary ? 'amber' : 'none'}
+      className={isPrimary ? 'pl-6 pr-5 py-5' : 'px-5 py-4'}
+    >
+      <div className={`caption-label mb-2 ${isPrimary ? 'text-amber-200/80' : 'text-stone-500'}`}>
         {label}
       </div>
       <div
-        className={`text-4xl font-light tabular-nums font-display ${accent ? 'text-amber-200' : 'text-stone-100'}`}
+        className={`tab-nums font-display ${
+          isPrimary
+            ? 'text-5xl font-light text-amber-100'
+            : 'text-3xl font-light text-stone-200'
+        }`}
       >
         {value}
       </div>
-      {sub && <div className="text-xs text-stone-500 mt-1 font-mono">{sub}</div>}
+      {sub && (
+        <div
+          className={`mt-1.5 italic ${isPrimary ? 'text-amber-200/60 text-sm' : 'text-stone-500 text-xs'}`}
+        >
+          {sub}
+        </div>
+      )}
     </Card>
   );
 }
