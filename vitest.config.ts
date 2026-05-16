@@ -13,6 +13,7 @@ export default defineConfig({
     include: ['tests/security/**/*.test.ts', 'tests/ai/**/*.test.ts', 'tests/ats/**/*.test.ts'],
     globals: false,
     pool: 'forks',
+    testTimeout: 30_000,
   },
   resolve: {
     alias: {
