@@ -1,7 +1,3 @@
-# Minimal pre-Day-1 gitignore. Foundation Agent will expand this on Day 1
-# with framework-specific entries (Next.js build artifacts, Prisma migrations,
-# Storybook output, etc.).
-
 # OS
 .DS_Store
 Thumbs.db
@@ -17,7 +13,7 @@ Thumbs.db
 .env.*.local
 *.pem
 
-# Dependencies (filled in by Foundation Agent on Day 1)
+# Dependencies
 node_modules/
 
 # Build / cache
@@ -26,6 +22,14 @@ out/
 dist/
 .turbo/
 .vercel/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Prisma
+# WHY: only generated client output is ignored — `prisma/migrations/` must be
+# committed so production deploys apply the same DDL the team tested.
+prisma/.cache/
+prisma/generated/
 
 # Test artifacts
 playwright-report/

@@ -1,0 +1,38 @@
+{
+  "name": "throughline",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "playwright test --config=playwright.config.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "6.39.3",
+    "@prisma/client": "5.22.0",
+    "next": "15.5.18",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0",
+    "@types/node": "22.10.5",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "@tailwindcss/postcss": "4.2.4",
+    "autoprefixer": "10.4.20",
+    "eslint": "9.18.0",
+    "eslint-config-next": "15.5.18",
+    "postcss": "8.4.49",
+    "prisma": "5.22.0",
+    "tailwindcss": "4.2.4",
+    "typescript": "5.9.3"
+  }
+}
