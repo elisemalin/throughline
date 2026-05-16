@@ -34,7 +34,8 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 | `@clerk/nextjs` | Foundation Agent installs on Day 1. Justification for choosing Clerk over Firebase Auth: BYOK Anthropic flow is browser-side, server only validates session, and Clerk's middleware integrates with Next.js App Router. |
 | `@anthropic-ai/sdk` | AI Integration Agent installs when starting Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
 | `inngest` | External Adapter Agent installs when starting Day 3. Daily poller for ATS providers. |
-| `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs when starting Day 3. AI prompt-hash cache + sliding-window rate limit. |
+| `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs on Day 2. AI prompt-hash cache + sliding-window rate limit. `@upstash/redis` 1.34.x is the Edge-compatible REST client; `@upstash/ratelimit` 2.0.x is the sliding-window helper that backs `/lib/security/rate-limit.ts`. |
+| `vitest` (dev) | Security Agent installs on Day 2. Node-environment unit + integration runner for `/tests/security/**` (crypto round-trip, rate-limit, headers, never-stores grep). Chosen over Jest because the rest of the studio targets a single TS-first runner and Vitest reuses the tsconfig path alias `@/*` natively. Pinned to 2.1.x because 3.x reshuffles the `defineConfig` import surface. |
 
 Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.
 
@@ -97,6 +98,12 @@ Every Prisma row that leaves an `app/api/*` route as part of a response goes thr
 **Why:** `SkillsDB.contact`, `SkillsDB.jobs`, and `Application.alignmentAnalysis` are Prisma `Json` columns. Prisma generates them as `Prisma.JsonValue` (a wide union effectively equivalent to `unknown`). Without a single read-boundary helper every Backend Core consumer would re-derive an unsafe cast or call `Schema.parse(...)` inline at each call site, and any drift between the persisted JSON and the contract Zod schema would surface as a runtime error inside an arbitrary route instead of at a single defined boundary.
 
 **Rule:** All `prisma.skillsDB.findUnique` / `.findFirst` / `.findMany` reads run their `contact` and `jobs` columns through `parseContact` / `parseJobs` (in `lib/db/serialize.ts`) before returning to API consumers. All `prisma.application.find*` reads run their `alignmentAnalysis` column through `parseAlignmentAnalysis` (same module). The per-table projectors in that module already do both.
+
+### Security middleware composes with Foundation's auth middleware
+
+**Why:** Next.js only honors a single `middleware.ts` at the repo root, and Foundation owns it for Clerk auth (`clerkMiddleware` callback, `isPublicRoute` matcher). Security primitives — rate limit and headers — live in `/middleware.security.ts` as a library, not a competing entry point. Foundation's `middleware.ts` will call into it from inside its `clerkMiddleware` handler once Day 3 wiring lands (integration sketch is in the source comments of `middleware.security.ts`).
+
+**For Backend Core / Frontend / any future agent:** do not add a second `middleware.ts`. Do not `matcher`-exempt API routes to bypass `middleware.security`. New API routes inherit the read tier (60 req/min) automatically; routes that drive a Claude generation are listed in `AI_ROUTE_PATTERNS` inside `middleware.security.ts` and get the AI tier (10 req/min).
 
 ### `SERVER_NEVER_STORES` policy is broader than the `integrity.sh` Rule 9 grep
 
