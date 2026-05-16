@@ -39,6 +39,11 @@ const WEB_SEARCH_TOOL: WebSearchTool20250305 = {
   max_uses: 5,
 };
 
+const DOSSIER_OUTPUT_HINT = `Output JSON shape (return EXACTLY this key):
+{
+  "body": "<Markdown dossier as a single string, with inline source links>"
+}`;
+
 export function buildDossierUser(input: DossierInput): string {
   const app = input.application;
   return [
@@ -47,6 +52,8 @@ export function buildDossierUser(input: DossierInput): string {
     wrapUntrusted('company', app.company),
     wrapUntrusted('jobDescription', app.jobDescription ?? ''),
     wrapUntrusted('notes', app.notes ?? ''),
+    '',
+    DOSSIER_OUTPUT_HINT,
   ].join('\n');
 }
 
