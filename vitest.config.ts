@@ -1,22 +1,28 @@
+// Vitest config — shared across all test suites (security, ai, ats, api).
+//
+// WHY env=node: tests exercise Node's built-in SubtleCrypto (Node 22) and
+// pure server code. Path alias `@/*` mirrors tsconfig.json so the same
+// import shape works at runtime in the test runner as in the app.
+
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 
-// WHY: the `@/*` alias mirrors tsconfig.json so test files import handlers
-// via the same paths the Next.js runtime uses. A manual `resolve.alias` is
-// preferred over the vite-tsconfig-paths plugin because the plugin is ESM-
-// only and vitest 2.x loads its config via require(), which fails on ESM
-// dependencies.
 export default defineConfig({
+  test: {
+    environment: 'node',
+    include: [
+      'tests/security/**/*.test.ts',
+      'tests/ai/**/*.test.ts',
+      'tests/ats/**/*.test.ts',
+      'tests/api/**/*.test.ts',
+    ],
+    globals: false,
+    pool: 'forks',
+    testTimeout: 30_000,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
     },
-  },
-  test: {
-    include: ['tests/api/**/*.test.ts'],
-    environment: 'node',
-    globals: false,
-    clearMocks: true,
-    setupFiles: ['./tests/api/_setup.ts'],
   },
 });

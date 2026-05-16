@@ -63,8 +63,10 @@ import {
 import type {
   AlignmentAnalysis,
   Application,
+  DiscoveredPosting,
   Document,
   SkillsDB,
+  WatchlistCompany,
 } from '@/contracts/models';
 
 // ---------------------------------------------------------------------------
@@ -120,6 +122,327 @@ const mockState: MockState = {
 export function __seedMockState(patch: Partial<MockState>): void {
   Object.assign(mockState, patch);
 }
+
+// ---------------------------------------------------------------------------
+// Fixtures (lifted from /prototype/Throughline.jsx so Storybook and the
+// dev shell render against realistic data). Exported so stories and tests
+// can construct typed patches via __seedMockState.
+// ---------------------------------------------------------------------------
+
+// Lifted from prototype/Throughline.jsx lines 120-469. IDs and shapes
+// normalized to contracts/models.ts (jobs use the J\\d{1,4} regex; projects
+// use the P\\d{1,4} regex; endDate is undefined rather than empty string).
+export const eliseSeed: SkillsDB = {
+  id: 'mock_skills',
+  ownerId: 'mock_user',
+  fullName: 'Elise Malin',
+  headline: 'Software Engineer & UI Developer',
+  positioning:
+    'Front-end engineer who turns internal tooling into measurable operational lift for ops, training, and field teams at enterprise scale.',
+  contact: {
+    email: 'elisemalin7@gmail.com',
+    phone: '+1 480 666 1320',
+    location: 'Tempe, Arizona',
+    site: 'pasteldawn.com',
+  },
+  targetRoles: [
+    'Senior Full Stack Engineer',
+    'Digital Solutions Engineer',
+    'Senior Frontend Engineer',
+  ],
+  awards: [
+    '2025 Award of Excellence at Discount Tire (one of three company-wide recipients)',
+    'Employee of the Year at Tala Multimedia (2020)',
+    'Employee of the Year at SmartWrap (2016)',
+  ],
+  jobs: [
+    {
+      id: 'J01',
+      employer: 'Discount Tire',
+      title: 'Frontend Developer II',
+      startDate: '2021-07',
+      location: 'Scottsdale, AZ',
+      industry: 'Retail / Automotive Services',
+      summary:
+        'Design, develop, and test enterprise-wide web applications and training technology serving 25,000+ employees across 1,100+ retail locations.',
+      projects: [
+        {
+          id: 'P01',
+          name: 'Vision POS Training & Inventory System',
+          problem:
+            '25,000+ store associates needed to be trained on a new POS and inventory system without disrupting daily operations.',
+          actions: [
+            'Served as Program Lead for the rollout end-to-end',
+            'Designed and built interactive simulations mirroring the production POS',
+            'Developed mobile and desktop training modules in React',
+          ],
+          result: 'Onboarded 25,000+ store employees with a zero-disruption rollout.',
+          metrics: { users: '25000', locations: '1100' },
+          scope: 'Company-wide, 1,100+ retail locations',
+          skills: ['React', 'JavaScript', 'Instructional design', 'Program management'],
+          tools: ['React', 'SCORM', 'Kaltura'],
+          methods: ['Agile', 'Cross-functional delivery'],
+          domain: 'Enterprise training',
+          keywords: ['POS training', 'simulation', 'eLearning', 'enterprise rollout'],
+          recency: 5,
+          relevance: ['leadership', 'frontend', 'training'],
+          confidence: 0.95,
+        },
+        {
+          id: 'P02',
+          name: 'DTU Review Tracker (POC)',
+          problem:
+            'Performance and content review processes lacked structured tracking, SSO, and audit trail.',
+          actions: [
+            'Architected full-stack POC with React + TypeScript frontend and Node/Express backend',
+            'Designed PostgreSQL schema with Prisma',
+            'Integrated Okta SSO for enterprise authentication',
+          ],
+          result:
+            'Delivered an IT-validated proof of concept used as evidence for Digital Solutions Engineering reclassification.',
+          metrics: {},
+          scope: 'DTU Develop team and stakeholders',
+          skills: ['Full-stack architecture', 'React', 'TypeScript', 'Node.js', 'PostgreSQL'],
+          tools: ['React', 'TypeScript', 'Node.js', 'Express', 'PostgreSQL', 'Prisma', 'Okta'],
+          methods: ['Discovery', 'Architecture design', 'POC delivery'],
+          domain: 'Enterprise internal tools',
+          keywords: ['React', 'TypeScript', 'Node.js', 'PostgreSQL', 'Prisma', 'SSO'],
+          recency: 5,
+          relevance: ['fullstack', 'architecture'],
+          confidence: 0.95,
+        },
+      ],
+    },
+    {
+      id: 'J02',
+      employer: 'Tala Multimedia',
+      title: 'Contract Frontend Developer',
+      startDate: '2019-08',
+      endDate: '2024-05',
+      location: 'Remote',
+      industry: 'Web development agency',
+      summary:
+        'Designed, developed, and managed 150+ client websites across stacks including WordPress, Strapi, and static builds.',
+      projects: [
+        {
+          id: 'P01',
+          name: '150+ Client Website Builds',
+          problem:
+            'Small and mid-sized clients needed custom websites across a wide range of CMS, design, and budget constraints.',
+          actions: [
+            'Designed in Figma and Adobe XD',
+            'Built across WordPress, Strapi, and static HTML/CSS/JS',
+          ],
+          result: 'Delivered 150+ production client websites with stack appropriate to each engagement.',
+          metrics: { client_sites: '150' },
+          scope: 'Agency client portfolio',
+          skills: ['Frontend development', 'Design systems', 'Client management'],
+          tools: ['Figma', 'Adobe XD', 'WordPress', 'Strapi', 'HTML', 'CSS', 'JavaScript'],
+          methods: ['Client discovery', 'Iterative delivery'],
+          domain: 'Web development',
+          keywords: ['WordPress', 'Strapi', 'Figma', 'frontend'],
+          recency: 4,
+          relevance: ['frontend', 'design'],
+          confidence: 0.95,
+        },
+      ],
+    },
+  ],
+  coreSkills: [
+    'React',
+    'TypeScript',
+    'JavaScript',
+    'Node.js',
+    'Full-stack architecture',
+    'Frontend development',
+    'API integration',
+    'Program management',
+    'Code review',
+    'Mentorship',
+  ],
+  tools: [
+    'React',
+    'TypeScript',
+    'Node.js',
+    'Express',
+    'PostgreSQL',
+    'Prisma',
+    'Figma',
+    'Postman',
+    'Okta',
+    'AWS S3',
+  ],
+  methods: ['Agile', 'Cross-functional delivery', 'Architecture design', 'Code review'],
+  domains: ['Enterprise training', 'Enterprise internal tools', 'Web development'],
+  keywords: ['React', 'TypeScript', 'Node.js', 'enterprise rollout', 'internal tools'],
+  updatedAt: '2026-05-16T00:00:00.000Z',
+};
+
+// Lifted from prototype/Throughline.jsx lines 481-492. Shape matches
+// WatchlistCompany contract (id, ownerId, company, atsProvider, atsSlug,
+// active, lastPolled, createdAt).
+export const watchlistSeed: WatchlistCompany[] = [
+  {
+    id: 'w_1',
+    ownerId: 'mock_user',
+    company: 'Retool',
+    atsProvider: 'greenhouse',
+    atsSlug: 'retool',
+    active: true,
+    lastPolled: '2026-05-13T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_2',
+    ownerId: 'mock_user',
+    company: 'Linear',
+    atsProvider: 'greenhouse',
+    atsSlug: 'linear',
+    active: true,
+    lastPolled: '2026-05-13T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_3',
+    ownerId: 'mock_user',
+    company: 'Vercel',
+    atsProvider: 'ashby',
+    atsSlug: 'vercel',
+    active: true,
+    lastPolled: '2026-05-13T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_4',
+    ownerId: 'mock_user',
+    company: 'Anthropic',
+    atsProvider: 'greenhouse',
+    atsSlug: 'anthropic',
+    active: true,
+    lastPolled: '2026-05-13T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+  {
+    id: 'w_5',
+    ownerId: 'mock_user',
+    company: 'Figma',
+    atsProvider: 'ashby',
+    atsSlug: 'figma',
+    active: true,
+    lastPolled: '2026-05-13T06:00:00Z',
+    createdAt: '2026-05-01T00:00:00Z',
+  },
+];
+
+// Lifted from prototype/Throughline.jsx lines 499-650. Shapes normalized to
+// the DiscoveredPosting contract (adds ownerId, watchlistCompanyId,
+// externalId, createdAt; coerces remote to boolean; postedAt is ISO date).
+export const discoverySeed: DiscoveredPosting[] = [
+  {
+    id: 'disc_1',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_1',
+    externalId: 'gh-retool-1',
+    company: 'Retool',
+    atsProvider: 'greenhouse',
+    role: 'Solutions Engineer, Internal Tools',
+    location: 'San Francisco / Remote (US)',
+    remote: true,
+    postedAt: '2026-05-12',
+    url: 'https://job-boards.greenhouse.io/retool/jobs/example',
+    salaryRange: '$170k to $230k',
+    jobDescription:
+      "Retool is hiring a Solutions Engineer for our Internal Tools practice. You'll partner with our largest customers (engineering, ops, and training teams) to architect internal applications on Retool. You will translate business requirements into shipped tooling, build reference implementations, and debug production deployments alongside customer engineering teams.",
+    alignmentScore: 92,
+    status: 'new',
+    createdAt: '2026-05-12T06:00:00Z',
+  },
+  {
+    id: 'disc_2',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_2',
+    externalId: 'gh-linear-1',
+    company: 'Linear',
+    atsProvider: 'greenhouse',
+    role: 'Senior Frontend Engineer',
+    location: 'Remote (Americas)',
+    remote: true,
+    postedAt: '2026-05-11',
+    url: 'https://job-boards.greenhouse.io/linear/jobs/example',
+    salaryRange: '$190k to $250k',
+    jobDescription:
+      'Linear is hiring a Senior Frontend Engineer to work on our core product. You will ship rapidly, own features end to end, and partner with design on tightly crafted interactions. We are looking for strong React and TypeScript fundamentals, design sensibility, and a portfolio of production frontend work at scale.',
+    alignmentScore: 88,
+    status: 'new',
+    createdAt: '2026-05-11T06:00:00Z',
+  },
+  {
+    id: 'disc_3',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_3',
+    externalId: 'ashby-vercel-1',
+    company: 'Vercel',
+    atsProvider: 'ashby',
+    role: 'Senior Full Stack Engineer, Customer Engineering',
+    location: 'Remote (US)',
+    remote: true,
+    postedAt: '2026-05-10',
+    url: 'https://jobs.ashbyhq.com/vercel/example',
+    salaryRange: '$180k to $240k',
+    jobDescription:
+      "Vercel is hiring a Senior Full Stack Engineer for our Customer Engineering team. You will work directly with enterprise customers, build reference implementations, debug production Next.js deployments, and contribute back into our core product.",
+    alignmentScore: 85,
+    status: 'new',
+    createdAt: '2026-05-10T06:00:00Z',
+  },
+  {
+    id: 'disc_4',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_4',
+    externalId: 'gh-anthropic-1',
+    company: 'Anthropic',
+    atsProvider: 'greenhouse',
+    role: 'Frontend Engineer, Claude for Work',
+    location: 'San Francisco / NYC / Remote',
+    remote: true,
+    postedAt: '2026-05-08',
+    url: 'https://job-boards.greenhouse.io/anthropic/jobs/example',
+    salaryRange: '$200k to $260k',
+    jobDescription:
+      "Anthropic is hiring Frontend Engineers to build Claude.ai and our enterprise extensions. You'll work in React and TypeScript, ship features for millions of users, and partner closely with research, design, and product.",
+    alignmentScore: 82,
+    status: 'new',
+    createdAt: '2026-05-08T06:00:00Z',
+  },
+  {
+    id: 'disc_5',
+    ownerId: 'mock_user',
+    watchlistCompanyId: 'w_5',
+    externalId: 'ashby-figma-1',
+    company: 'Figma',
+    atsProvider: 'ashby',
+    role: 'Software Engineer, Internal Tools',
+    location: 'San Francisco / NYC',
+    remote: false,
+    postedAt: '2026-05-08',
+    url: 'https://jobs.ashbyhq.com/figma/example',
+    salaryRange: '$180k to $240k',
+    jobDescription:
+      "Figma is hiring a Software Engineer for our Internal Tools team. You will build the tooling that lets Figma's GTM, ops, support, and training teams scale. React and TypeScript skills, comfort with full stack JavaScript and SQL, and the ability to scope ambiguous problems are required.",
+    alignmentScore: 80,
+    status: 'new',
+    createdAt: '2026-05-08T06:00:00Z',
+  },
+];
+
+// Hydrate the mock state with the prototype's seed data on module load so
+// every route renders against realistic data during the parallel sprint.
+// Storybook stories override via __seedMockState.
+Object.assign(mockState, {
+  skillsDB: eliseSeed,
+  watchlist: watchlistSeed,
+  discovery: discoverySeed,
+});
 
 // ---------------------------------------------------------------------------
 // POST /api/alignment
@@ -199,6 +522,24 @@ export async function postAlignment(req: AlignmentRequest): Promise<AlignmentRes
 // Document generation
 // ---------------------------------------------------------------------------
 
+// WHY: in production, the document-generation routes also persist the
+// resulting Document row (a generation that no one can re-read isn't useful).
+// The mock mirrors that: each generator pushes to mockState.documents so
+// getDocuments() returns the freshly created entry.
+function persistGenerated(response: DocumentResponse): Document {
+  const doc: Document = {
+    id: newId('doc'),
+    ownerId: 'mock_user',
+    kind: response.kind,
+    title: response.title,
+    body: response.body,
+    applicationId: response.applicationId,
+    createdAt: response.createdAt,
+  };
+  mockState.documents.unshift(doc);
+  return doc;
+}
+
 export async function postResume(req: ResumeRequest): Promise<DocumentResponse> {
   ResumeRequestSchema.parse(req);
   await delay(SLOW);
@@ -206,13 +547,15 @@ export async function postResume(req: ResumeRequest): Promise<DocumentResponse> 
   const application = req.applicationId
     ? mockState.applications.find((a) => a.id === req.applicationId)
     : undefined;
-  return {
+  const response: DocumentResponse = {
     kind: 'resume',
     title: `Resume for ${application?.role || 'general'}${application?.company ? ` (${application.company})` : ''}`,
     body: renderResume(skillsDB, application),
     createdAt: nowIso(),
     applicationId: req.applicationId,
   };
+  persistGenerated(response);
+  return response;
 }
 
 export async function postCoverLetter(req: CoverLetterRequest): Promise<DocumentResponse> {
@@ -223,13 +566,15 @@ export async function postCoverLetter(req: CoverLetterRequest): Promise<Document
   if (!application) {
     throw new Error(`Application not found: ${req.applicationId}`);
   }
-  return {
+  const response: DocumentResponse = {
     kind: 'cover_letter',
     title: `Cover letter for ${application.company || 'draft'}`,
     body: renderCoverLetter(skillsDB, application, req.customNotes),
     createdAt: nowIso(),
     applicationId: req.applicationId,
   };
+  persistGenerated(response);
+  return response;
 }
 
 export async function postNinetyDayPlan(req: NinetyDayRequest): Promise<DocumentResponse> {
@@ -239,13 +584,15 @@ export async function postNinetyDayPlan(req: NinetyDayRequest): Promise<Document
   if (!application) {
     throw new Error(`Application not found: ${req.applicationId}`);
   }
-  return {
+  const response: DocumentResponse = {
     kind: 'ninety_day',
     title: `90-day plan for ${application.company || 'draft'}`,
     body: renderNinetyDay(application),
     createdAt: nowIso(),
     applicationId: req.applicationId,
   };
+  persistGenerated(response);
+  return response;
 }
 
 export async function postDossier(req: DossierRequest): Promise<DocumentResponse> {
@@ -255,13 +602,15 @@ export async function postDossier(req: DossierRequest): Promise<DocumentResponse
   if (!application) {
     throw new Error(`Application not found: ${req.applicationId}`);
   }
-  return {
+  const response: DocumentResponse = {
     kind: 'dossier',
     title: `Dossier for ${application.company || 'company'}`,
     body: renderDossier(application),
     createdAt: nowIso(),
     applicationId: req.applicationId,
   };
+  persistGenerated(response);
+  return response;
 }
 
 // ---------------------------------------------------------------------------

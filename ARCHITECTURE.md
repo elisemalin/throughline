@@ -32,10 +32,11 @@ Deviates from the Pastel Dawn default stack (React + Vite + Firebase). Rationale
 | `next` 15 | Foundation Agent installs on Day 1. Justification for choosing Next over Vite-only: App Router enables the `/app/api/*` routes and middleware that Backend Core and Security Agent rely on, and Vercel deployment is one-step. |
 | `@prisma/client` 5 + `prisma` 5 | Foundation Agent installs on Day 1. Maps `/contracts/models.ts` to Postgres. JSON columns are used for nested SkillsDB shapes per the Decision below. |
 | `@clerk/nextjs` | Foundation Agent installs on Day 1. Justification for choosing Clerk over Firebase Auth: BYOK Anthropic flow is browser-side, server only validates session, and Clerk's middleware integrates with Next.js App Router. |
-| `@anthropic-ai/sdk` | AI Integration Agent installs when starting Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
-| `inngest` | External Adapter Agent installs when starting Day 3. Daily poller for ATS providers. |
-| `@upstash/redis` + `@upstash/ratelimit` | Security Agent installs when starting Day 3. AI prompt-hash cache + sliding-window rate limit. |
-| `vitest` 2.x | Backend Core installs on Day 2 to back `pnpm test:api`. Chosen over Jest because vitest's Vite-compatible config resolves the `@/*` alias the same way Next.js does (via a one-line `resolve.alias`), and module mocking via `vi.mock` is hoisted, which keeps each route's three-scenario test file under ~80 lines. Manual `path.resolve` alias rather than `vite-tsconfig-paths` because that plugin is ESM-only and vitest 2.x loads its config via `require()`. |
+| `@anthropic-ai/sdk` | AI Integration Agent installs on Day 2. Used with `dangerouslyAllowBrowser: true` so the BYOK key flows from the user's browser; server never sees the key. |
+| `inngest` 3.27.4 | External Adapter Agent installs on Day 2. Daily ATS poller runs as an Inngest scheduled function (`jobs/poll.ts`); the client lives in `jobs/inngest.ts`. Pinned to 3.27.4 because 3.28+ requires the Next 15 App Router handler shape Backend Core has not yet wired. |
+| `@upstash/redis` + `@upstash/ratelimit` | Both installed on Day 2 — `@upstash/redis` lands first via AI Integration's `/lib/ai/cache.ts` (prompt-hash cache), and Security adds `@upstash/ratelimit` for the sliding-window rate limiter at `/lib/security/rate-limit.ts`. `@upstash/redis` 1.34.x is the Edge-compatible REST client; `@upstash/ratelimit` 2.0.x is the sliding-window helper. |
+| `vitest` 2.1.9 | Installed on Day 2 by the first agent to need it. Node-environment runner used by `/tests/security/**`, `/tests/ai/**`, `/tests/ats/**`, and `/tests/api/**`. Chosen over Jest because the studio targets a single TS-first runner and Vitest reuses the tsconfig `@/*` alias natively. Pinned to 2.1.9 (last 2.x release on Node 22). |
+| `tsx` (dev) | AI Integration Agent installs on Day 2 to run `lib/ai/smoke.ts` (the one-call-per-workflow live smoke) as a plain Node script under `pnpm test:ai:live`. No bundler, no Next runtime needed — `tsx` executes the TS file directly. |
 
 Foundation Agent adds the rest on Day 1 (tailwind, postcss, autoprefixer, eslint, typescript, etc.) and appends a one-line rationale per non-trivial entry.
 
@@ -98,6 +99,12 @@ Every Prisma row that leaves an `app/api/*` route as part of a response goes thr
 **Why:** `SkillsDB.contact`, `SkillsDB.jobs`, and `Application.alignmentAnalysis` are Prisma `Json` columns. Prisma generates them as `Prisma.JsonValue` (a wide union effectively equivalent to `unknown`). Without a single read-boundary helper every Backend Core consumer would re-derive an unsafe cast or call `Schema.parse(...)` inline at each call site, and any drift between the persisted JSON and the contract Zod schema would surface as a runtime error inside an arbitrary route instead of at a single defined boundary.
 
 **Rule:** All `prisma.skillsDB.findUnique` / `.findFirst` / `.findMany` reads run their `contact` and `jobs` columns through `parseContact` / `parseJobs` (in `lib/db/serialize.ts`) before returning to API consumers. All `prisma.application.find*` reads run their `alignmentAnalysis` column through `parseAlignmentAnalysis` (same module). The per-table projectors in that module already do both.
+
+### Security middleware composes with Foundation's auth middleware
+
+**Why:** Next.js only honors a single `middleware.ts` at the repo root, and Foundation owns it for Clerk auth (`clerkMiddleware` callback, `isPublicRoute` matcher). Security primitives — rate limit and headers — live in `/middleware.security.ts` as a library, not a competing entry point. Foundation's `middleware.ts` will call into it from inside its `clerkMiddleware` handler once Day 3 wiring lands (integration sketch is in the source comments of `middleware.security.ts`).
+
+**For Backend Core / Frontend / any future agent:** do not add a second `middleware.ts`. Do not `matcher`-exempt API routes to bypass `middleware.security`. New API routes inherit the read tier (60 req/min) automatically; routes that drive a Claude generation are listed in `AI_ROUTE_PATTERNS` inside `middleware.security.ts` and get the AI tier (10 req/min).
 
 ### `SERVER_NEVER_STORES` policy is broader than the `integrity.sh` Rule 9 grep
 
@@ -185,8 +192,8 @@ Shipped on branch `agent/backend-core/d2`:
 
 - 19 route files under `/app/api/*` — one handler per entry in `API_ROUTES` from `/contracts/api.ts`. Every handler uses the prelude shape documented in the Decisions section above (Clerk gate, JSON parse, Zod validation, Prisma I/O, contract-shape response).
 - Server-side helpers under `/lib/server/`: `auth.ts` (Clerk `requireUserId`), `response.ts` (`jsonError`, `fromZodError`, `readJson`), `skills.ts` (projected SkillsDB read).
-- Day-2 placeholder AI namespace at `/lib/ai/index.ts` re-exporting from `/lib/ai/__mock__/*`. Covers all seven workflows (alignment, resume, cover-letter, ninety-day, dossier, mock-interview, ingest). AI Integration overwrites this on their Day-2 PR.
-- Day-2 placeholder ATS registry at `/lib/ats/registry.ts` + `/lib/ats/__mock__/adapter.ts`. Exposes `getAdapter(provider)` and `triggerPoll(ownerId)`. External Adapter overwrites this on their Day-3 PR.
+- Day-2 placeholder AI namespace was superseded at merge time by AI Integration's real namespace (PR #9). Backend Core's handlers continue to import `runAlignment` / `runResume` / etc. — those names now resolve to a Day-2 compatibility shim at the bottom of `lib/ai/index.ts` that adapts the real `(input, { apiKey })` signature to Backend Core's single-arg form by passing `apiKey: ''`. **Mock-mode safe.** Day-3 cleanup reads `x-anthropic-key` from request headers, calls AI Integration's real exports directly, and removes the shim.
+- Day-2 placeholder ATS registry was superseded at merge time by External Adapter's real registry (PR #7). `ATS_ADAPTERS` is the canonical map; `getAdapter(provider)` and `triggerPoll(ownerId)` survive as shims at the bottom of `lib/ats/registry.ts` so existing handlers compile. Day-3 cleanup replaces `getAdapter` with `ATS_ADAPTERS[p]` and either deletes `triggerPoll` or wires `inngest.send`.
 - Vitest integration tests under `/tests/api/`: 15 test files, 68 tests. Every route in `API_ROUTES` has at least one test asserting (a) 401 without a Clerk session, (b) 400 on invalid request shape, and (c) the response body parses against its contract Zod schema. Prisma and Clerk are mocked via `vi.mock` in `tests/api/_setup.ts`.
 - `vitest.config.ts` + `pnpm test:api` script.
 
@@ -194,4 +201,14 @@ Shipped on branch `agent/backend-core/d2`:
 
 | Package | Why |
 |---|---|
-| `vitest` 2.1.9 | Backend Core's `pnpm test:api` runner. Sits alongside Playwright (smoke) so unit/integration and end-to-end harnesses can move independently. Pinned at 2.1.9 because vitest 3.x's vite peer dep moves past the version pnpm currently has cached for the workspace. |
+| `vitest` 2.1.9 | Backend Core's `pnpm test:api` runner. Already in the workspace from Day 2 — added by AI Integration / Security; Backend Core only adds the `tests/api/**` include glob to `vitest.config.ts` and the `pnpm test:api` script. |
+
+### Day 2 Dependencies sub-table (Frontend Agent)
+
+| Package | Why |
+|---|---|
+| `zustand` 5.x | Three small client-side stores (`useApiKeyStore`, `useNavigationStore`, `useToastStore`). Chosen over Redux Toolkit because the only persisted data is the BYOK key envelope; everything else round-trips through TanStack Query against `/lib/mock-api`. |
+| `@tanstack/react-query` 5.x | Single source for every server-state read/write. `QueryProvider` wraps `app/(app)/layout.tsx`; every `/lib/queries/*` hook is a thin wrapper over a `mock-api` function so the Day 5 swap is mechanical. |
+| `lucide-react` 1.x | Icon set used by the prototype. Direct port — every NAV icon, every `<Plus />` / `<RefreshCw />` in the views resolves through one library so the visual language stays consistent. Major version jumped to 1.x in May 2026; identifiers in use (`LayoutDashboard`, `Compass`, etc.) remained stable. |
+| `@axe-core/playwright` 4.x | Drives `pnpm test:a11y`. Day 2 ships one public-route scan (`/sign-in`); the authenticated-route scan unblocks once QA Agent provisions `CI_LIVE_CLERK=1`. |
+| `storybook` 9.x + `@storybook/nextjs` 9.x + `@storybook/addon-a11y` 9.x | Component documentation + per-story axe-core run. Pinned to Storybook 9 because the 8.x line and Next 15.5 + React 19 collide on a webpack `Cannot read properties of undefined (reading 'tap')` error. |
