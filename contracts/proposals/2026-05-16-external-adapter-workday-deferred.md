@@ -1,5 +1,5 @@
 ---
-status: [PENDING REVIEW]
+status: [DECIDED: accept]
 filed-by: agent/external-adapter
 date: 2026-05-16
 ---

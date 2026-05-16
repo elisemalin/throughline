@@ -102,3 +102,23 @@ export const NormalizedPostingSchema = z
 
 // Re-export so adapter tests don't need to import from models.ts directly.
 export { ATS_PROVIDERS };
+
+// ---------------------------------------------------------------------------
+// On-demand poll event
+//
+// Backend Core's POST /api/discovery/poll dispatches this via inngest.send;
+// External Adapter's Inngest function listens for it and runs a per-user
+// sweep. The constant + schema live here so both producer (Backend Core's
+// handler) and consumer (jobs/poll.ts) import from the contract — keeps the
+// role boundary clean. See /contracts/proposals/2026-05-16-external-adapter-ats-poll-event.md.
+// ---------------------------------------------------------------------------
+
+export const ATS_POLL_REQUESTED_EVENT = 'ats/poll.requested' as const;
+export type AtsPollRequestedEvent = typeof ATS_POLL_REQUESTED_EVENT;
+
+export const AtsPollRequestedDataSchema = z
+  .object({
+    ownerId: z.string().min(1).max(200),
+  })
+  .strict();
+export type AtsPollRequestedData = z.infer<typeof AtsPollRequestedDataSchema>;
