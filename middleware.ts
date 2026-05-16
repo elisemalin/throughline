@@ -8,16 +8,14 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 // Matchers list explicit public routes; anything not matched here requires
-// a signed-in session.
-//
-// TODO: When Backend Core adds the Clerk webhook handler
-// (`/api/webhooks/clerk` per Clerk docs), append the path to `isPublicRoute`
-// so unauthenticated POSTs from Clerk are not blocked. Svix signature
-// verification is the real defense for that route.
+// a signed-in session. `/api/webhooks/clerk` is unauthenticated by design —
+// Clerk posts to it directly from their service. Svix signature
+// verification inside the handler is the real defense.
 const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
+  '/api/webhooks/clerk',
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
