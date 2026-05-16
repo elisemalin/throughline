@@ -30,6 +30,55 @@ Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 - Architect to decide on `job-tags.md` (cheap, unblocks Lever's richer category data) and `workday-spike-results.md` (supersedes workday-deferred; needs slug schema + endpoint constructor changes).
 - Live drift CI workflow runs but the schedule and any failure alerting is unconfigured on the GitHub project; Architect/Foundation may want to wire a notification.
 
+## [agent/backend-core/d4] — 2026-05-16
+
+### Added
+- `lib/server/response.ts`: `API_ERROR_CODES` const tuple, `ApiErrorBodySchema` Zod schema, exported `ApiErrorCode` type. `jsonError(status, code, ...)` now takes a typed `code: ApiErrorCode` — accidental typos at call sites fail typecheck. `webhook_persist_failed` added for the 503 transient-failure path.
+- `lib/server/auth.ts`: `requireUserId` JIT fallback. After the Clerk session resolves, the helper reads the User row; on miss, creates a placeholder `{ id, email: '<id>@pending.clerk' }`. Exported `ensureUserRow` and `pendingEmail` for test reuse. P2002 race-collisions swallowed; non-unique errors re-thrown.
+- Webhook resilience: `withTransientRetry` one-shot retry on P1001/P1002/P1008/P1017 after a 100ms back-off; 503 `webhook_persist_failed` on persistent failure. `user.deleted` event now does `deleteMany` on User (cascade per the Prisma schema's `onDelete: Cascade`); idempotent on duplicate deliveries.
+- `/api/discovery/poll`: `newPostings` populated from `count(DiscoveredPosting where status='new')` — Frontend's unseen-count badge.
+- Real-Neon api integration suite at `/tests/api/integration/` (5 files, 10 tests). Covers Application CRUD + events, applications/[id]/alignment persistence, skills/ingest upsert idempotence, watchlist add with adapter stubbed, webhook upsert + user.deleted cascade.
+- `vitest.api.integration.config.ts` + `pnpm test:api:integration` script. `tests/api/integration/_env.ts` setupFile resolves `DATABASE_URL_TEST` (preferred) or falls back to `DATABASE_URL` with a printed warning; suite skips cleanly when neither is set.
+- Unit suite additions: `tests/api/auth-jit.test.ts` (6 tests covering the JIT fallback paths and P2002 race handling), `tests/api/error-codes.test.ts` (4 tests asserting every code in the registry parses against `ApiErrorBodySchema`). Webhook unit test extended with transient-retry, 503-on-persistent-failure, user.deleted cascade, duplicate-delivery idempotence.
+
+### Changed
+- `tests/api/_setup.ts`: added `prisma.user.findUnique`, `prisma.user.create`, `prisma.user.deleteMany` to the mocked surface.
+- `tests/api/_helpers.ts`: `signedIn()` now also mocks `prisma.user.findUnique` to return the test owner row by default (so existing tests don't pay the JIT create path). Tests exercising the cold-start path clear and re-mock.
+- `package.json`: `test:api` `--exclude '**/integration/**'` so the unit run does not surface the gated integration suite as "skipped". Added `test:api:integration`.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` and `/lib/mock-api.ts` untouched.
+
+### Carried over
+- Real-Neon execution path is wired but unexecuted on this branch (no local `DATABASE_URL_TEST`). CI workflow gate will run it once the secret lands.
+- Cascade-delete policy on `user.deleted` deletes ALL owned rows. If Day-5 product calls for soft-delete or retention, the route's body is the single edit site.
+
+## [agent/ai-integration/d4] — 2026-05-16
+
+### Added
+- `lib/ai/cost.ts` — per-`(workflow, model)` token + USD instrumentation. `recordUsage()` is called from `invoke.ts` and `mockInterview.ts` after every SDK round-trip (including retry attempts, so the bill reflects every real call). `getCostStats()` returns a snapshot with totals, per-key aggregates, and call counts; `resetCostStats()` zeros the records. Pricing table is in-source, USD-per-million-tokens, with sonnet-4-6, opus-4-7, haiku-4-5 entries. Unknown models contribute `$0` rather than throw.
+- `DEFAULT_WEB_SEARCH_MAX_USES = 5` + `DossierOpts.webSearchMaxUses?: number` — Backend Core can lower the per-call web_search budget for cost-sensitive callers without redeploying.
+- `tests/ai/cost.test.ts` (8 tests) — pricing-table arithmetic, aggregation, unknown-model fallback, missing-usage default, retry records both attempts.
+- `tests/ai/cache-eviction.test.ts` (5 tests) — TTL contract (CACHE_TTL_SECONDS forwarding, custom-TTL override, sanity 24h), and a simulation of post-eviction behavior using a clearable backing store: a previously-cached entry returns null after the store empties and the next workflow call hits the SDK afresh. Opt-in real-Upstash TTL test is deferred; documented inline.
+- `tests/ai/ambiguous-ingest.test.ts` (6 tests) — drives `runSkillsIngest` against a deliberate-ambiguity corpus (missing end date, duplicate skills, quarter-format dates, too-many-jobs) and asserts the workflow surfaces the `warnings` field unchanged through the Zod parse boundary. Schema cap (20 entries) explicitly tested.
+- `tests/ai/dossier.test.ts` — two new tests pin the default web_search budget and the override path.
+- Smoke script (`lib/ai/smoke.ts`):
+  - Resets and prints `cost.ts` stats per workflow at the end of each run; writes a `_cost-report.json` fixture alongside the per-workflow JSON.
+  - New `mockInterview-calibration-10turns` block drives a 10-user-turn transcript so the live `done` transition can be observed against the mock's threshold.
+  - New `skillsIngest-ambiguous` block packs four parse ambiguities into one resume so the captured fixture shows what the live model writes into `warnings`.
+
+### Changed
+- `lib/ai/workflows/skillsIngest.ts` — `INGEST_OUTPUT_HINT` extended with the `warnings` field shape and one-sentence examples (mirrors the now-merged `INGEST_SYSTEM` addition).
+- `tests/ai/skillsIngest.test.ts` — minimal valid fixture gains `warnings: []`; new test asserts the mock returns a non-empty warnings array.
+- `lib/ai/workflows/dossier.ts` — `WEB_SEARCH_TOOL` constant replaced with a `webSearchTool(maxUses)` factory; `runDossier` and `dossier` accept the new opt.
+
+### Contract notes
+- None. `/contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md` already accepted on `main`; no new proposals filed.
+
+### Carried over
+- **Live smoke not re-run in this PR.** The auto-mode classifier blocked an inline `ANTHROPIC_API_KEY=…` invocation citing the absence of fresh-session consent (the prior key paste was in the Day-3 session). Smoke harness, calibration block, ambiguous-ingest block, and `_cost-report.json` fixture writer are all wired and ready; re-running `pnpm test:ai:live` with a key produces the new fixtures + cost report.
+- `mockInterview-calibration-10turns` fixture cannot be captured until the live smoke runs. Once captured, if `done` is not `true` at turn 10 we either lower the SYSTEM threshold (Architect proposal) or relax the mock fixture's `>= 10` rule.
+
 ## [agent/frontend/d3] — 2026-05-16
 
 ### Added

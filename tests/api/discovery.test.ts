@@ -39,29 +39,36 @@ describe('POST /api/discovery/poll', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns a contract-shape DiscoveryPollResponse', async () => {
+  it('populates newPostings from the unseen (status=new) count', async () => {
     signedIn();
-    mPrisma.discoveredPosting.count.mockResolvedValueOnce(0);
+    // First .count() call is total; second is unseen (status='new').
+    mPrisma.discoveredPosting.count
+      .mockResolvedValueOnce(12)
+      .mockResolvedValueOnce(3);
     mPrisma.watchlistCompany.aggregate.mockResolvedValueOnce({
       _count: { _all: 0 },
       _min: { lastPolled: null },
       _max: { lastPolled: new Date('2026-05-15T12:00:00Z') },
     } as never);
+
     const res = await POLL();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual(
-      expect.objectContaining({
-        newPostings: 0,
-        totalPostings: expect.any(Number),
-        polledAt: expect.any(String),
-      }),
+    expect(body).toEqual({
+      newPostings: 3,
+      totalPostings: 12,
+      polledAt: '2026-05-15T12:00:00.000Z',
+    });
+    expect(mPrisma.discoveredPosting.count).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: 'new' }) }),
     );
   });
 
   it('falls back to current time when no watchlist row has been polled', async () => {
     signedIn();
-    mPrisma.discoveredPosting.count.mockResolvedValueOnce(0);
+    mPrisma.discoveredPosting.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
     mPrisma.watchlistCompany.aggregate.mockResolvedValueOnce({
       _count: { _all: 0 },
       _min: { lastPolled: null },
@@ -71,6 +78,7 @@ describe('POST /api/discovery/poll', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(typeof body.polledAt).toBe('string');
+    expect(body.newPostings).toBe(0);
   });
 });
 

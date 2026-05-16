@@ -26,6 +26,7 @@ const minimalIngest = {
   methods: [],
   domains: [],
   keywords: [],
+  warnings: [],
 };
 
 describe('skillsIngest mock', () => {
@@ -34,6 +35,15 @@ describe('skillsIngest mock', () => {
     const out = await mockSkillsIngest(input, { apiKey: '' });
     expect(IngestRawSchema.safeParse(out).success).toBe(true);
     expect(out.fullName).toBe('Jane Doe');
+  });
+
+  it('returns a warnings array (Day-3 contract addition)', async () => {
+    const out = await mockSkillsIngest(
+      { resumeText: 'Jane Doe\nSenior Engineer' },
+      { apiKey: '' },
+    );
+    expect(Array.isArray(out.warnings)).toBe(true);
+    expect(out.warnings.length).toBeGreaterThan(0);
   });
 });
 

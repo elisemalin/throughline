@@ -1,14 +1,14 @@
 // POST /api/webhooks/clerk
 //
 // Clerk webhook receiver. Verifies the Svix signature, then on `user.created`
-// (and `user.updated`) upserts a `User` row keyed by the Clerk user ID. JIT
-// User provisioning unblocks every Backend Core handler that writes a row
-// with ownerId set to req.auth.userId — without a corresponding User row,
-// those writes would fail on the foreign-key constraint.
+// or `user.updated` upserts a `User` row keyed by the Clerk user ID; on
+// `user.deleted` deletes the row (Prisma cascades owned rows per the
+// schema's onDelete: Cascade). The handler is idempotent — Clerk retries on
+// non-2xx, so duplicate deliveries of the same event must be safe.
 //
 // Public route (no Clerk middleware gate): the request is unauthenticated by
-// design — Clerk posts to it directly from their service. The Svix signature
-// is the real defense; the route MUST verify it before any DB write.
+// design. The Svix signature is the only defense; the handler MUST verify
+// it before any DB write.
 
 import { NextResponse } from 'next/server';
 import { Webhook, WebhookVerificationError } from 'svix';
@@ -37,6 +37,33 @@ function pickPrimaryEmail(data: ClerkUserEvent['data']): string | undefined {
   return (primary ?? list[0]).email_address;
 }
 
+// Transient Prisma error codes — connection lost, can't reach DB. The
+// handler retries once after a 100ms back-off; persistent failures surface
+// as 503 so Clerk's retry queue picks the event up again. Non-transient
+// errors (P2002 unique-collision, P2003 FK, P2025 not-found) are NOT in
+// this list — those would loop forever.
+const TRANSIENT_PRISMA_CODES = new Set(['P1001', 'P1002', 'P1008', 'P1017']);
+
+function isTransientPrismaError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    typeof (err as { code: unknown }).code === 'string' &&
+    TRANSIENT_PRISMA_CODES.has((err as { code: string }).code)
+  );
+}
+
+async function withTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isTransientPrismaError(err)) throw err;
+    await new Promise((r) => setTimeout(r, 100));
+    return fn();
+  }
+}
+
 export async function POST(req: Request) {
   const secret = process.env.CLERK_WEBHOOK_SIGNING_SECRET;
   if (!secret) {
@@ -62,32 +89,50 @@ export async function POST(req: Request) {
       'svix-signature': svixSignature,
     }) as ClerkUserEvent;
   } catch (err) {
-    // Svix returns WebhookVerificationError on any signature mismatch,
-    // expired timestamp, or malformed payload. All of those reduce to 400
-    // from the client's perspective; the server never trusts the body.
     if (err instanceof WebhookVerificationError) {
       return jsonError(400, 'invalid_signature', 'Webhook signature verification failed.');
     }
     throw err;
   }
 
-  if (event.type === 'user.created' || event.type === 'user.updated') {
-    const email = pickPrimaryEmail(event.data);
-    if (!email) {
-      // Skip rather than fail: a Clerk account with no email cannot satisfy
-      // our `email String @unique` column. Clerk may retry; the route is
-      // idempotent and the next attempt will succeed once the email lands.
-      return NextResponse.json({ ok: true, skipped: 'no_primary_email' });
+  try {
+    if (event.type === 'user.created' || event.type === 'user.updated') {
+      const email = pickPrimaryEmail(event.data);
+      if (!email) {
+        // Skip rather than fail: a Clerk account with no email cannot satisfy
+        // our `email String @unique` column. Clerk may retry; the route is
+        // idempotent and the next attempt will succeed once the email lands.
+        return NextResponse.json({ ok: true, skipped: 'no_primary_email' });
+      }
+      await withTransientRetry(() =>
+        prisma.user.upsert({
+          where: { id: event.data.id },
+          create: { id: event.data.id, email },
+          update: { email },
+        }),
+      );
+    } else if (event.type === 'user.deleted') {
+      // Cascade deletion is wired via the Prisma schema's onDelete: Cascade
+      // on every owned table (Application, Document, SkillsDB, WatchlistCompany,
+      // DiscoveredPosting) — removing the User row tears down everything else.
+      // deleteMany scoped by id makes the call idempotent: a duplicate delete
+      // event is a no-op rather than a P2025 not-found.
+      await withTransientRetry(() =>
+        prisma.user.deleteMany({ where: { id: event.data.id } }),
+      );
     }
-    await prisma.user.upsert({
-      where: { id: event.data.id },
-      create: { id: event.data.id, email },
-      update: { email },
-    });
+  } catch (err) {
+    if (isTransientPrismaError(err)) {
+      // 503 with a Retry-After hint nudges Clerk's queue back-off and gives
+      // the Neon serverless cold-start time to recover before the next try.
+      return jsonError(
+        503,
+        'webhook_persist_failed',
+        'Persistence layer unreachable; Clerk will retry.',
+      );
+    }
+    throw err;
   }
 
-  // user.deleted and any other event types are acked but not acted on for
-  // now — User row cascade-deletes are deferred until we have an explicit
-  // policy on whether deletion at Clerk should also cascade our data.
   return NextResponse.json({ ok: true });
 }

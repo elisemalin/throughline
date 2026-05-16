@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DossierRawSchema, type DossierInput } from '@/contracts/ai';
 import { dossier as mockDossier } from '@/lib/ai/workflows/dossier.mock';
-import { runDossier } from '@/lib/ai/workflows/dossier';
+import { DEFAULT_WEB_SEARCH_MAX_USES, runDossier } from '@/lib/ai/workflows/dossier';
 import { __setCacheClientForTests } from '@/lib/ai/cache';
 import { fakeApplication, makeFakeCache, makeFakeClient } from './fakes';
 
@@ -39,5 +39,19 @@ describe('dossier real (mocked SDK)', () => {
     const client = makeFakeClient([{ text: valid }]);
     await runDossier(client, { application: fakeApplication() });
     expect(client.calls[0].user).toContain('<UNTRUSTED_INPUT name="company">');
+  });
+
+  it('defaults web_search max_uses to DEFAULT_WEB_SEARCH_MAX_USES', async () => {
+    const client = makeFakeClient([{ text: valid }]);
+    await runDossier(client, { application: fakeApplication() });
+    const tools = client.calls[0].tools as Array<{ max_uses?: number }>;
+    expect(tools[0]?.max_uses).toBe(DEFAULT_WEB_SEARCH_MAX_USES);
+  });
+
+  it('honors a custom webSearchMaxUses override', async () => {
+    const client = makeFakeClient([{ text: valid }]);
+    await runDossier(client, { application: fakeApplication() }, { webSearchMaxUses: 2 });
+    const tools = client.calls[0].tools as Array<{ max_uses?: number }>;
+    expect(tools[0]?.max_uses).toBe(2);
   });
 });

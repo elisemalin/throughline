@@ -63,8 +63,11 @@ const INGEST_OUTPUT_HINT = `Output JSON shape (return EXACTLY these keys; empty 
   "tools": ["<tool>", ...],
   "methods": ["<method>", ...],
   "domains": ["<domain>", ...],
-  "keywords": ["<keyword>", ...]
-}`;
+  "keywords": ["<keyword>", ...],
+  "warnings": ["<short string flagging anything ambiguous you had to decide>", ...]
+}
+
+For the warnings array specifically: each entry is one short sentence (max 500 chars) describing a parse-time ambiguity, a missing field you defaulted, a duplicate you collapsed, or a normalization choice you made. Empty array if the parse was clean. Examples: "could not extract end date for J02", "collapsed duplicate skill entries (Python listed twice)", "resume contained 12 jobs; only the most recent 20 are kept".`;
 
 export function buildIngestUser(input: IngestInput): string {
   const blocks: string[] = [
