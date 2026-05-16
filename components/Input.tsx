@@ -1,25 +1,47 @@
 'use client';
 
-// Text input matching the prototype's dark form treatment.
-// Lifted from prototype/Throughline.jsx lines 815-825. The prototype passed
-// onChange(value); we widen to standard HTML props so Field's cloneElement
-// can inject id/aria-describedby and so React Hook Form etc. can attach later.
+// Underline-style text input. Day 4 drops the boxed `bg-stone-900/80 +
+// border` chrome that read as default shadcn; the field is now a
+// transparent line with a 2px amber focus underline that slides in from
+// the left over 160ms (.focus-underline in globals.css).
+//
+// A `boxed` variant remains for cases where the field genuinely needs a
+// frame to be legible — the BYOK API-key field where masked-text would
+// otherwise float in space.
 
 import type { InputHTMLAttributes } from 'react';
 
 export type InputProps = {
-  mono?: boolean;
+  variant?: 'underline' | 'boxed';
+  mono?: boolean; // back-compat: tabular numerics on Fraunces
 } & InputHTMLAttributes<HTMLInputElement>;
 
-const base =
-  'w-full bg-stone-900/80 border border-stone-800 rounded-sm px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-200/60 focus:bg-stone-900 transition-colors';
+const underlineWrap =
+  'focus-underline block border-b border-stone-700 hover:border-stone-500 transition-colors';
+const boxedWrap =
+  'block rounded-md ring-1 ring-stone-800 bg-stone-950/60 hover:ring-stone-700 focus-within:ring-amber-200/60 transition';
 
-export function Input({ mono = false, className = '', type = 'text', ...rest }: InputProps) {
+const underlineInput =
+  'block w-full bg-transparent px-0 py-2 text-stone-100 placeholder-stone-600 focus:outline-none';
+const boxedInput =
+  'block w-full bg-transparent px-3 py-2 text-stone-100 placeholder-stone-600 focus:outline-none';
+
+export function Input({
+  variant = 'underline',
+  mono = false,
+  className = '',
+  type = 'text',
+  ...rest
+}: InputProps) {
+  const wrap = variant === 'boxed' ? boxedWrap : underlineWrap;
+  const inner = variant === 'boxed' ? boxedInput : underlineInput;
   return (
-    <input
-      type={type}
-      className={`${base} ${mono ? 'font-mono text-sm' : 'text-sm'} ${className}`}
-      {...rest}
-    />
+    <span className={wrap}>
+      <input
+        type={type}
+        className={`${inner} ${mono ? 'tab-nums text-sm tracking-[0.01em]' : 'text-sm'} ${className}`}
+        {...rest}
+      />
+    </span>
   );
 }

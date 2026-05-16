@@ -1,7 +1,6 @@
 /* WHY: Tailwind 4 is CSS-first; the @import pulls in the engine and the
    @config directive loads the JS config (tailwind.config.ts) where design
-   tokens are declared. Keeping tokens in TS lets the team grep them and
-   share them with non-Tailwind code paths later. */
+   tokens are declared. Keeping tokens in TS lets the team grep them. */
 
 @import "tailwindcss";
 @config "../tailwind.config.ts";
@@ -10,26 +9,25 @@
   color-scheme: dark;
 }
 
-/* Stone-950 base; a barely-visible warm radial pulls the eye to the
-   wordmark area without breaking the editorial flat-color discipline.
-   Combined with a low-amplitude SVG noise overlay (below) it gives the
-   surface a printed-paper grain rather than the perfectly-flat
-   default-dark-app look. */
 html, body {
   background-color: rgb(12 10 9);
   color: rgb(231 229 228);
+  font-feature-settings: "ss01", "calt";
 }
 
 body {
+  /* Warm radial pulse from upper-left + a quieter cool radial from the
+     lower-right. Combined with the noise overlay below it gives the
+     surface a printed-paper warmth instead of the flat-dark default. */
   background-image:
     radial-gradient(
-      ellipse 60vw 40vh at 16% -10%,
-      rgba(253, 230, 138, 0.05),
+      ellipse 70vw 40vh at 14% -10%,
+      rgba(253, 230, 138, 0.06),
       transparent 60%
     ),
     radial-gradient(
-      ellipse 40vw 50vh at 100% 110%,
-      rgba(180, 140, 90, 0.04),
+      ellipse 50vw 60vh at 100% 110%,
+      rgba(180, 140, 90, 0.045),
       transparent 60%
     );
   background-attachment: fixed;
@@ -37,38 +35,78 @@ body {
   position: relative;
 }
 
-/* WHY ::before with inlined SVG noise: a 1KB inline mask is cheaper than
-   an extra HTTP request and survives the static asset pipeline. The
-   opacity is tuned so the grain reads as paper texture, not as visual
-   noise. */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.035;
+  opacity: 0.04;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* Display headings use Fraunces with the SOFT axis pushed up — gives the
-   serifs an organic, hand-cut quality rather than the crisp neoclassical
-   look of an Instrument Serif. */
-.font-display {
-  font-variation-settings: "SOFT" 80, "opsz" 144;
-  letter-spacing: -0.01em;
+/* Body / paragraph defaults: Fraunces at an opsz that reads as text-grade
+   and a slight SOFT lift so the serifs do not feel academic. */
+body, .font-display {
+  font-variation-settings: "SOFT" 50, "opsz" 14;
+  letter-spacing: -0.005em;
 }
 
-/* The brand wordmark uses Italiana — single-weight, art-deco serif. The
-   letter-spacing widens it out so the four capital letters carry presence
-   even at small sizes in the sidebar. */
+/* Display headings push opsz up to the display range with more SOFT. */
+h1, h2, h3, .display-xl, .display-lg {
+  font-variation-settings: "SOFT" 80, "opsz" 144;
+  letter-spacing: -0.012em;
+}
+
+/* The brand wordmark uses Italiana. Letter-spacing widens it so the four
+   capitals carry presence even at small sizes in the sidebar. */
 .font-wordmark {
   letter-spacing: 0.04em;
   font-feature-settings: "liga", "dlig";
 }
 
+/* Throughline's mono-uppercase caption pattern that used to ride on
+   JetBrains Mono is now Fraunces with wide tracking + tabular numerics +
+   a slightly bolder weight. Reads as an editorial label rather than a
+   robotic mono-stamp. */
+.caption-label {
+  font-variation-settings: "opsz" 12;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 10px;
+}
+
+/* Tabular numerics for stats / scores / dates. */
+.tab-nums {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum", "lnum";
+}
+
 ::selection {
   background-color: rgba(253, 230, 138, 0.22);
   color: rgb(253, 230, 138);
+}
+
+/* Underline-animated focus state used by the form field family. The
+   parent input sets position: relative and renders this pseudo via a
+   utility class so we do not have to add a wrapper element. */
+.focus-underline {
+  position: relative;
+}
+.focus-underline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background-color: rgb(253 230 138);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 160ms ease-out;
+}
+.focus-underline:focus-within::after {
+  transform: scaleX(1);
 }

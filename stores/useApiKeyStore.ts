@@ -12,25 +12,26 @@
 // Two write paths:
 //   - mode = 'passphrase' uses encryptKey/decryptKey (AES-GCM 256, PBKDF2)
 //   - mode = 'fallback'   uses noPassphraseFallback (XOR obfuscation; the
-//                         UI warns and the contract proposal at
-//                         /contracts/proposals/2026-05-16-frontend-apikey-mode.md
-//                         tracks the mode field formally).
+//                         UI warns the user)
 //
-// Day 3 interim: the mode is persisted under the frontend-local key
-// `throughline:apiKeyMode` until that proposal is accepted into
-// /contracts/storage.ts as ApiKeyMeta.mode.
+// Day 4: the frontend-local `throughline:apiKeyMode` shim is gone.
+// /contracts/proposals/2026-05-16-frontend-apikey-mode.md was accepted on
+// main; `mode` is now part of ApiKeyMeta in /contracts/storage.ts. Reading
+// or writing the mode flag goes through `meta.mode` exclusively.
 
 import { create } from 'zustand';
+import {
+  decryptKey,
+  decryptNoPassphraseFallback,
+  encryptKey,
+  noPassphraseFallback,
+} from '@/lib/security/crypto';
 import { LOCAL_STORAGE_KEYS, type ApiKeyMeta } from '@/contracts/storage';
 
-export type ApiKeyMode = 'passphrase' | 'fallback';
-
-// WHY frontend-local: see /contracts/proposals/2026-05-16-frontend-apikey-mode.md.
-const APIKEY_MODE_KEY = 'throughline:apiKeyMode';
+export type ApiKeyMode = ApiKeyMeta['mode'];
 
 export type ApiKeyState = {
   meta: ApiKeyMeta | null;
-  mode: ApiKeyMode | null;
   hydrated: boolean;
   loadMeta: () => void;
   saveKey: (plaintext: string, passphrase: string) => Promise<void>;
@@ -39,51 +40,23 @@ export type ApiKeyState = {
   clearKey: () => void;
 };
 
-type CryptoModule = {
-  encryptKey: (
-    plaintext: string,
-    passphrase: string,
-  ) => Promise<{ ciphertext: string; iv: string; salt: string }>;
-  decryptKey: (
-    ciphertext: string,
-    iv: string,
-    salt: string,
-    passphrase: string,
-  ) => Promise<string>;
-  noPassphraseFallback: (
-    plaintext: string,
-  ) => { ciphertext: string; iv: string; salt: string };
-  decryptNoPassphraseFallback: (ciphertext: string) => string;
-};
-
-async function loadCrypto(): Promise<CryptoModule> {
-  try {
-    const mod = await import('@/lib/security/crypto');
-    return mod as CryptoModule;
-  } catch {
-    throw new Error('BYOK crypto helpers failed to load (/lib/security/crypto.ts).');
-  }
-}
-
 function readMetaFromStorage(): ApiKeyMeta | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = window.localStorage.getItem(LOCAL_STORAGE_KEYS.apiKeyMeta);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ApiKeyMeta;
-    if (typeof parsed?.last4 !== 'string' || typeof parsed?.createdAt !== 'string') {
+    if (
+      typeof parsed?.last4 !== 'string' ||
+      typeof parsed?.createdAt !== 'string' ||
+      (parsed?.mode !== 'passphrase' && parsed?.mode !== 'fallback')
+    ) {
       return null;
     }
     return parsed;
   } catch {
     return null;
   }
-}
-
-function readModeFromStorage(): ApiKeyMode | null {
-  if (typeof window === 'undefined') return null;
-  const raw = window.localStorage.getItem(APIKEY_MODE_KEY);
-  return raw === 'passphrase' || raw === 'fallback' ? raw : null;
 }
 
 function persistEnvelope(
@@ -100,7 +73,6 @@ function persistEnvelope(
   window.localStorage.setItem(LOCAL_STORAGE_KEYS.apiKeySalt, envelope.salt);
   window.localStorage.setItem(LOCAL_STORAGE_KEYS.apiKeyIv, envelope.iv);
   window.localStorage.setItem(LOCAL_STORAGE_KEYS.apiKeyMeta, JSON.stringify(meta));
-  window.localStorage.setItem(APIKEY_MODE_KEY, mode);
   return meta;
 }
 
@@ -111,31 +83,26 @@ function clearStorage(): void {
     LOCAL_STORAGE_KEYS.apiKeySalt,
     LOCAL_STORAGE_KEYS.apiKeyIv,
     LOCAL_STORAGE_KEYS.apiKeyMeta,
-    APIKEY_MODE_KEY,
   ];
   keys.forEach((k) => window.localStorage.removeItem(k));
 }
 
-export const useApiKeyStore = create<ApiKeyState>((set) => ({
+export const useApiKeyStore = create<ApiKeyState>((set, get) => ({
   meta: null,
-  mode: null,
   hydrated: false,
   loadMeta: () => {
     const meta = readMetaFromStorage();
-    const mode = meta ? (readModeFromStorage() ?? 'passphrase') : null;
-    set({ meta, mode, hydrated: true });
+    set({ meta, hydrated: true });
   },
   saveKey: async (plaintext, passphrase) => {
-    const crypto = await loadCrypto();
-    const envelope = await crypto.encryptKey(plaintext, passphrase);
+    const envelope = await encryptKey(plaintext, passphrase);
     const meta = persistEnvelope(envelope, plaintext, 'passphrase');
-    set({ meta, mode: 'passphrase' });
+    set({ meta });
   },
   saveKeyNoPassphrase: async (plaintext) => {
-    const crypto = await loadCrypto();
-    const envelope = crypto.noPassphraseFallback(plaintext);
+    const envelope = noPassphraseFallback(plaintext);
     const meta = persistEnvelope(envelope, plaintext, 'fallback');
-    set({ meta, mode: 'fallback' });
+    set({ meta });
   },
   unlock: async (passphrase) => {
     const ciphertext = window.localStorage.getItem(LOCAL_STORAGE_KEYS.apiKey);
@@ -144,15 +111,14 @@ export const useApiKeyStore = create<ApiKeyState>((set) => ({
     if (!ciphertext || !salt || !iv) {
       throw new Error('No saved Anthropic key. Add one in Settings first.');
     }
-    const mode = readModeFromStorage() ?? 'passphrase';
-    const crypto = await loadCrypto();
+    const mode = get().meta?.mode ?? 'passphrase';
     if (mode === 'fallback') {
-      return crypto.decryptNoPassphraseFallback(ciphertext);
+      return decryptNoPassphraseFallback(ciphertext);
     }
-    return crypto.decryptKey(ciphertext, iv, salt, passphrase);
+    return decryptKey(ciphertext, iv, salt, passphrase);
   },
   clearKey: () => {
     clearStorage();
-    set({ meta: null, mode: null });
+    set({ meta: null });
   },
 }));

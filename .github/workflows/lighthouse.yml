@@ -1,0 +1,61 @@
+# Lighthouse CI — public-route performance/accessibility gate.
+#
+# WHY: lighthouserc.json asserts 90+ on perf / a11y / best-practices / SEO
+# but Day 3 had no workflow running it. Boots `pnpm dev` against a
+# placeholder Clerk publishable key (the assertion targets `/sign-in`
+# which is a Clerk-hosted form — Lighthouse only audits the App Router
+# shell + the request the page makes). Authenticated-route coverage
+# unblocks when QA Agent provisions `CI_LIVE_CLERK=1` real test creds.
+
+name: Lighthouse
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      # Placeholder Clerk keys so the ClerkProvider can render without
+      # crashing during the `pnpm dev` boot lhci performs. Real keys are
+      # never required here — Lighthouse only fetches `/sign-in` which is
+      # served by the App Router shell + Clerk's hosted form iframe.
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+      CLERK_PUBLISHABLE_KEY: pk_test_placeholder
+      CLERK_SECRET_KEY: sk_test_placeholder
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Install Chrome for Lighthouse
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run Lighthouse CI
+        run: pnpm test:lighthouse
+
+      - name: Upload Lighthouse report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: .lhci/
+          if-no-files-found: ignore

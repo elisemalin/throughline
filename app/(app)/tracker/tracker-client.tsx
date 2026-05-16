@@ -89,12 +89,15 @@ export function TrackerClient() {
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-        <div>
-          <h1 className="text-4xl text-stone-100 font-display">Tracker</h1>
-          <p className="text-stone-500 text-sm mt-1">
-            Every active conversation in one place. Status moves are the heartbeat.
+    <div className="space-y-10">
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <div className="space-y-3">
+          <div className="caption-label text-stone-500">Heartbeat</div>
+          <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
+            Tracker
+          </h1>
+          <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
+            Every active conversation. Status moves are the only signal that matters.
           </p>
         </div>
         <Button size="sm" onClick={() => setOpenCreate(true)} data-testid="tracker-add">
@@ -102,7 +105,7 @@ export function TrackerClient() {
         </Button>
       </header>
 
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Status filter">
+      <div className="flex flex-wrap gap-1 border-b border-stone-100/5 pb-1" role="tablist" aria-label="Status filter">
         {(['all', 'active', ...STATUSES] as StatusFilter[]).map((f) => (
           <button
             key={f}
@@ -110,13 +113,19 @@ export function TrackerClient() {
             role="tab"
             aria-selected={filter === f}
             onClick={() => setFilter(f)}
-            className={`text-[10px] uppercase tracking-[0.2em] font-mono px-2.5 py-1.5 rounded-sm border ${
+            className={`relative caption-label px-3 py-2 transition-colors ${
               filter === f
-                ? 'border-amber-200/60 text-amber-200 bg-amber-900/20'
-                : 'border-stone-800 text-stone-500 hover:text-stone-200'
+                ? 'text-amber-200'
+                : 'text-stone-600 hover:text-stone-300'
             }`}
           >
             {f === 'all' ? 'All' : f === 'active' ? 'Active' : statusLabel(f)}
+            {filter === f && (
+              <span
+                aria-hidden
+                className="absolute left-3 right-3 -bottom-1 h-[2px] bg-amber-200 rounded-full"
+              />
+            )}
           </button>
         ))}
       </div>
@@ -126,11 +135,24 @@ export function TrackerClient() {
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <Card className="p-10 text-center">
-          <p className="text-stone-500 text-sm mb-3">No applications under this filter.</p>
-          <Button size="sm" onClick={() => setOpenCreate(true)}>
-            <Plus size={14} aria-hidden /> Add your first
-          </Button>
+        <Card className="px-8 py-14 text-center space-y-4">
+          <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+            {applications.length === 0
+              ? 'Track the first one.'
+              : 'Nothing under this filter.'}
+          </p>
+          <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
+            {applications.length === 0
+              ? 'Status moves are the heartbeat.'
+              : 'Try Active.'}
+          </p>
+          {applications.length === 0 && (
+            <div className="pt-2">
+              <Button size="sm" onClick={() => setOpenCreate(true)}>
+                <Plus size={14} aria-hidden /> Add an application
+              </Button>
+            </div>
+          )}
         </Card>
       )}
 
@@ -141,18 +163,29 @@ export function TrackerClient() {
               <button
                 type="button"
                 onClick={() => setDetailId(a.id)}
-                className="w-full text-left"
+                className="w-full text-left group"
               >
-                <Card className="p-4 flex items-center gap-3 hover:bg-stone-900/40 transition-colors">
+                <Card
+                  accent={
+                    a.status === 'interview'
+                      ? 'emerald'
+                      : a.status === 'offer'
+                        ? 'emerald'
+                        : a.status === 'applied' || a.status === 'screen'
+                          ? 'amber'
+                          : 'none'
+                  }
+                  className="pl-6 pr-5 py-4 flex items-center gap-4 hover:ring-amber-200/30 transition-all group-hover:-translate-y-px"
+                >
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-stone-100 truncate">{a.role}</div>
-                    <div className="text-xs text-stone-500 font-mono truncate">
+                    <div className="text-stone-100 truncate">{a.role}</div>
+                    <div className="caption-label text-stone-500 truncate mt-1">
                       {a.company}
                       {a.location ? ` · ${a.location}` : ''}
                     </div>
                   </div>
                   {typeof a.alignmentScore === 'number' && (
-                    <span className="text-sm tabular-nums font-mono text-amber-200 w-12 text-right">
+                    <span className="tab-nums text-lg text-amber-200 bg-amber-950/20 ring-1 ring-amber-900/30 rounded-md px-2.5 py-0.5">
                       {a.alignmentScore}%
                     </span>
                   )}

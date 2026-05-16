@@ -165,6 +165,13 @@ export function JobModal({
               placeholder="2021-07"
               mono
               disabled={atLimit}
+              // WHY pattern + inputMode: native input[type=month] is unsupported
+              // in Firefox (degrades to text). The pattern matches the Zod
+              // schema's YYYY-MM regex so a Firefox user typing "2024" gets a
+              // friendly HTML validation message instead of a Zod 400 at submit.
+              pattern="\d{4}-\d{2}"
+              inputMode="numeric"
+              title="Year and month in YYYY-MM format"
             />
           </Field>
           <Field label="End date" hint="YYYY-MM, blank if current">
@@ -174,6 +181,9 @@ export function JobModal({
               placeholder="2024-05"
               mono
               disabled={atLimit}
+              pattern="\d{4}-\d{2}"
+              inputMode="numeric"
+              title="Year and month in YYYY-MM format, or blank if current"
             />
           </Field>
           <Field label="Location">

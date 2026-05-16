@@ -2,6 +2,48 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/frontend/d4] — 2026-05-16
+
+### Added
+- `design-audit.md` at repo root — per-route audit of generic patterns plus the changes landed this PR. Working document for review; future agents can prune it once the surface stabilizes.
+- `.github/workflows/lighthouse.yml` — runs `pnpm test:lighthouse` on every PR to main, fails if `/sign-in` drops below 90 on perf / a11y / best-practices / SEO.
+- `tests/components/passphraseStrength.test.ts` — 21 unit tests covering the denylist, leet normalization, sequential-run, repetition, and length/class bands. `test:components` script wired in `package.json`; vitest include extended.
+- `beforeunload` + `visibilitychange` flush on the notes editor in `app/(app)/tracker/application-detail.tsx` — any debounced PATCH still queued at navigation/background time fires synchronously so the server snapshot matches the on-screen text.
+
+### Changed — visual identity (the big slice)
+- **Two font families.** Dropped DM Sans and JetBrains Mono. Italiana stays as the wordmark. Fraunces variable now drives body, display, captions, and tabular numerics — Tailwind `font-sans` and `font-mono` collapse to it intentionally so any leftover utility class can't fall back to system fonts.
+- **Caption system.** The `.caption-label` token in `globals.css` replaces the `text-[10px] uppercase tracking-[0.2em] font-mono` pattern that lit up ~40 call sites with a "robotic mono stamp" feel. `SectionLabel`, `Field`, `Pill`, sidebar items, and per-route filter chips all flow through it.
+- **Card.tsx** — layered translucent surface (gradient bg + ring + soft inset highlight via the new `shadow-editorial` token + `backdrop-blur[3px]`) replaces the flat `bg-stone-950/60 + border` look. New `accent` prop renders a 2px left bar; `tone` prop swaps the ring colour for urgent/success states.
+- **Button.tsx** — primary picks up a vertical amber gradient and a hover shadow bloom; secondary rests at 80% opacity and brightens on hover; all variants hover-lift `translate-y-[-1px]` and press-down on active. Custom focus ring (offset + amber) replaces the browser default.
+- **Input.tsx / Textarea.tsx** — Input defaults to underline style (transparent bg + bottom border that animates an amber 2px line in from the left on focus via `.focus-underline` in globals); Textarea moves to a ring-based gradient frame.
+- **Modal.tsx** — 1px gradient amber accent on the top edge, warm-tinted backdrop with deeper blur, 220ms slide-up entry animation, header padding bumped.
+- **Sidebar.tsx** — active item is now a 2px amber left bar + transparent background + slightly widened tracking (was stone-900 fill). Vertical breathing increased. Footer carries a quiet two-hour-rule mood line.
+- **Toaster.tsx** — top accent bar coloured by tone replaces the full background tint; toasts slide in with a half-degree rotation from the right.
+- **Stat.tsx** — gains `prominence='primary' | 'quiet'`. Dashboard now reads "Interviews + Response %" as primary tiles (large amber numeral, accent bar, warm copy), with Applied + In flight rendered quieter so the grid has weight variation.
+- **Pill.tsx** — moves from a 1px solid border + heavy bg to a `ring-1` + soft tint with the caption-label token.
+- **Markdown / Field / SectionLabel** — all aligned to the new caption + body type system.
+- **Per-route header pattern** — every route now opens with `caption-label eyebrow + 5xl/6xl Fraunces tracking-tight h1 + italic Fraunces sub`, replacing the uniform `text-4xl + secondary-color line` pattern that read as a starter template.
+- **Empty states** — every route's "nothing here" got a route-specific copy line ("Nothing in flight yet. The two-hour rule starts here.", "Where does the throughline start?", "Caught up.", etc.) plus distinct typography weight.
+- **Dashboard** — recent applications get a 3px status-coloured left bar; today's follow-ups card switches to `tone='urgent'` rose ring when there are pending items; the "compound effect" trio (`2-hour rule / numbers game / track everything`) was deleted as documentation-pretending-to-be-UI.
+- **Tracker** — filter row moves from box-bordered chips to an underline-style tab strip; application rows render with an accent bar keyed to stage (`interview` → emerald, `applied`/`screen` → amber); alignment score becomes a pill (`text-lg tab-nums amber ring`) instead of a small right-aligned span.
+- **Discovery** — filter chips become rounded ring-1 pills; the top posting in the `new` filter renders as a featured card (taller, fuller copy, bigger 3xl alignment numeral with a "Fit" caption) while subsequent cards stay tight. Alignment-score accent bars vary by band (≥85 emerald, ≥70 amber, else none).
+- **Documents** — header refresh + empty state copy refresh.
+- **Interviews** — header refresh + empty state copy refresh.
+- **Settings** — header refresh + empty state copy refresh; `meta.mode` drives the Encrypted / Fallback pill (was reading from the now-deleted store field).
+
+### Changed — Day 3 debt
+- `stores/useApiKeyStore.ts` — `throughline:apiKeyMode` localStorage shim is gone. The accepted contract proposal added `mode` to `ApiKeyMeta`; the store now reads/writes it via `meta.mode` exclusively. Saved keys from before the migration that lack `mode` are treated as invalid metadata and the user is prompted to save again.
+- `components/JobModal.tsx` — start-date and end-date inputs now carry `pattern="\\d{4}-\\d{2}"` + `inputMode="numeric"` so Firefox (which silently degrades `input[type="month"]` to text) catches malformed dates via HTML validation instead of bouncing the request at the Zod boundary.
+- `components/PassphraseStrength.tsx` — hand-rolled heuristic gains a denylist of common passwords, a leet-substitution normalizer (so "p@ssw0rd" matches "password"), a sequential / keyboard-walk detector, and a repetition detector. Previously "password123" graded as Okay; it now flags as weak.
+
+### Contract notes
+- None. The `ApiKeyMeta.mode` field added by Architect at the accepted-proposal merge is in use now; the Day 3 frontend-local shim is removed.
+
+### Carried over
+- Authenticated-route Lighthouse + axe-core still gated on QA Agent provisioning `CI_LIVE_CLERK=1`. Day 4 still scans `/sign-in` only.
+- `next lint` deprecation warning still surfaces on every run.
+- Storybook bundle is large (`iframe-Cc3l5h1l.js` ≈ 1.2MB) but the route bundles ship well under the perf budget; addressing the Storybook split is Storybook-side work, not product code.
+
 ## [agent/frontend/d3] — 2026-05-16
 
 ### Added

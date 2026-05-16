@@ -154,12 +154,15 @@ export function SkillsClient() {
   const atJobLimit = jobsCount >= JOB_LIMIT;
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-        <div>
-          <h1 className="text-4xl text-stone-100 font-display">Skills Database</h1>
-          <p className="text-stone-500 text-sm mt-1">
-            The source of truth. Every resume, cover letter, and interview pulls from here.
+    <div className="space-y-10">
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+        <div className="space-y-3">
+          <div className="caption-label text-stone-500">Source of truth</div>
+          <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
+            Skills Database
+          </h1>
+          <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
+            Every resume, cover letter, and interview pulls from here.
           </p>
         </div>
         <div className="flex gap-2">
@@ -238,13 +241,18 @@ export function SkillsClient() {
               Roles &amp; projects
             </SectionLabel>
             {skillsDB.jobs.length === 0 ? (
-              <Card className="p-10 text-center">
-                <p className="text-stone-500 text-sm mb-4">
-                  No roles yet. Import a resume or add one manually.
+              <Card className="px-8 py-14 text-center space-y-4">
+                <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto leading-snug">
+                  Where does the throughline start?
                 </p>
-                <Button size="sm" onClick={openCreateJob}>
-                  <Plus size={14} aria-hidden /> Add your first role
-                </Button>
+                <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
+                  Import a resume, or add a role manually.
+                </p>
+                <div className="pt-2">
+                  <Button size="sm" onClick={openCreateJob}>
+                    <Plus size={14} aria-hidden /> Add a role
+                  </Button>
+                </div>
               </Card>
             ) : (
               <ul className="space-y-2">

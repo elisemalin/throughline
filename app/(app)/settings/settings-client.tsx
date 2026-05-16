@@ -21,7 +21,6 @@ import { useToastStore } from '@/stores/useToastStore';
 
 export function SettingsClient() {
   const meta = useApiKeyStore((s) => s.meta);
-  const mode = useApiKeyStore((s) => s.mode);
   const hydrated = useApiKeyStore((s) => s.hydrated);
   const loadMeta = useApiKeyStore((s) => s.loadMeta);
   const saveKey = useApiKeyStore((s) => s.saveKey);
@@ -70,19 +69,22 @@ export function SettingsClient() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-4xl text-stone-100 font-display">Settings</h1>
-        <p className="text-stone-500 text-sm mt-1">
-          BYOK Anthropic key. Stored encrypted in your browser; never leaves the device unencrypted.
+      <header className="space-y-3">
+        <div className="caption-label text-stone-500">BYOK</div>
+        <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
+          Settings
+        </h1>
+        <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
+          Anthropic key, stored encrypted in your browser. Never leaves the device unencrypted.
         </p>
       </header>
 
       <Card className="p-5">
         <SectionLabel
           right={
-            mode && (
-              <Pill tone={mode === 'fallback' ? 'warn' : 'success'}>
-                {mode === 'fallback' ? 'Fallback' : 'Encrypted'}
+            meta && (
+              <Pill tone={meta.mode === 'fallback' ? 'warn' : 'success'}>
+                {meta.mode === 'fallback' ? 'Fallback' : 'Encrypted'}
               </Pill>
             )
           }
@@ -97,7 +99,7 @@ export function SettingsClient() {
               <span className="font-mono text-amber-200">····{meta.last4}</span> · created{' '}
               {new Date(meta.createdAt).toLocaleDateString()}
             </p>
-            {mode === 'fallback' && (
+            {meta.mode === 'fallback' && (
               <p className="text-xs text-rose-200 bg-rose-950/30 border border-rose-900 rounded-md px-3 py-2 flex items-start gap-2">
                 <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden />
                 <span>
