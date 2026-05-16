@@ -15,6 +15,57 @@ import { createClient } from '../client';
 import { invokeOneShot } from '../invoke';
 import type { CallOptions } from '../types';
 
+// SkillsDB ingest output mirrors SkillsDBSchema minus server-set fields
+// (id, ownerId, updatedAt). Listing every field here is verbose but
+// prevents the model from inventing alternative names like "name" instead
+// of "fullName" (alignment wandered on field names in the 2026-05-16 live
+// smoke; this hint guards against the same pattern here).
+const INGEST_OUTPUT_HINT = `Output JSON shape (return EXACTLY these keys; empty array / "" for missing fields):
+{
+  "fullName": "<full name>",
+  "headline": "<one-line headline>",
+  "positioning": "<1-2 sentence positioning>",
+  "contact": { "email": "<email>", "phone": "<phone>", "location": "<location>", "linkedin": "<url>", "site": "<url>" },
+  "targetRoles": ["<role>", ...],
+  "awards": ["<award>", ...],
+  "jobs": [
+    {
+      "id": "J01",
+      "employer": "<employer>",
+      "title": "<title>",
+      "startDate": "YYYY-MM",
+      "endDate": "YYYY-MM",
+      "location": "<location>",
+      "industry": "<industry>",
+      "summary": "<summary>",
+      "projects": [
+        {
+          "id": "P01",
+          "name": "<project name>",
+          "problem": "<problem>",
+          "actions": ["<action>", ...],
+          "result": "<result>",
+          "metrics": { "<key>": "<value>" },
+          "scope": "<scope>",
+          "skills": ["<skill>", ...],
+          "tools": ["<tool>", ...],
+          "methods": ["<method>", ...],
+          "domain": "<domain>",
+          "keywords": ["<keyword>", ...],
+          "recency": <integer 1-5>,
+          "relevance": ["<tag>", ...],
+          "confidence": <number 0.0-1.0>
+        }
+      ]
+    }
+  ],
+  "coreSkills": ["<skill>", ...],
+  "tools": ["<tool>", ...],
+  "methods": ["<method>", ...],
+  "domains": ["<domain>", ...],
+  "keywords": ["<keyword>", ...]
+}`;
+
 export function buildIngestUser(input: IngestInput): string {
   const blocks: string[] = [
     'Resume text (untrusted user input):',
@@ -24,6 +75,7 @@ export function buildIngestUser(input: IngestInput): string {
     blocks.push('', 'LinkedIn export (untrusted user input):');
     blocks.push(wrapUntrusted('linkedin', input.linkedinText));
   }
+  blocks.push('', INGEST_OUTPUT_HINT);
   return blocks.join('\n');
 }
 

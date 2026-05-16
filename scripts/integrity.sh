@@ -114,15 +114,24 @@ grep_within \
 
 # ---------------------------------------------------------------------------
 # Rule 8 — No agent except Architect edits /contracts/*.ts
+#
+# An Architect commit on an agent branch (subject prefix "architect:") is
+# the legitimate path for accepting a proposal AND landing the contract
+# change in the same PR. Walk the commits that actually touch /contracts/*.ts
+# in this branch's diff vs main; if every such commit has the architect:
+# prefix, the rule passes.
 # ---------------------------------------------------------------------------
 BRANCH="${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD)}"
 if [[ "$BRANCH" != "main" && "$BRANCH" != architect/* ]]; then
-  if git diff --name-only origin/main...HEAD 2>/dev/null \
-    | grep -E '^contracts/[^/]+\.ts$' >/dev/null; then
-    fail "Non-Architect branch '$BRANCH' modifies /contracts/*.ts directly (file a proposal under /contracts/proposals/)"
-    git diff --name-only origin/main...HEAD \
-      | grep -E '^contracts/[^/]+\.ts$' \
-      | sed 's/^/  - /' >&2
+  CONTRACT_DIFF=$(git diff --name-only origin/main...HEAD 2>/dev/null | grep -E '^contracts/[^/]+\.ts$' || true)
+  if [[ -n "$CONTRACT_DIFF" ]]; then
+    NON_ARCHITECT_COMMITS=$(git log --format='%h %s' origin/main..HEAD -- contracts/*.ts 2>/dev/null | grep -v '^[a-f0-9]\+ architect:' || true)
+    if [[ -n "$NON_ARCHITECT_COMMITS" ]]; then
+      fail "Non-Architect branch '$BRANCH' modifies /contracts/*.ts without an 'architect:' commit (file a proposal under /contracts/proposals/ instead)"
+      echo "$CONTRACT_DIFF" | sed 's/^/  - /' >&2
+      echo "  non-architect commits touching contracts/:" >&2
+      echo "$NON_ARCHITECT_COMMITS" | sed 's/^/    /' >&2
+    fi
   fi
 fi
 

@@ -12,6 +12,11 @@ import { createClient } from '../client';
 import { invokeOneShot } from '../invoke';
 import type { CallOptions } from '../types';
 
+const NINETY_DAY_OUTPUT_HINT = `Output JSON shape (return EXACTLY this key):
+{
+  "body": "<Markdown 90-day plan as a single string>"
+}`;
+
 export function buildNinetyDayUser(input: NinetyDayInput): string {
   const app = input.application;
   return [
@@ -23,6 +28,8 @@ export function buildNinetyDayUser(input: NinetyDayInput): string {
     wrapUntrusted('company', app.company),
     wrapUntrusted('jobDescription', app.jobDescription ?? ''),
     wrapUntrusted('notes', app.notes ?? ''),
+    '',
+    NINETY_DAY_OUTPUT_HINT,
   ].join('\n');
 }
 
