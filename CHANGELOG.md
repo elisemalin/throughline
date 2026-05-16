@@ -2,6 +2,34 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/frontend/d3] — 2026-05-16
+
+### Added
+- `/components/JobModal.tsx` and `/components/ProjectModal.tsx`: full create/edit forms for `SkillsDB.jobs[*]` and `SkillsDB.jobs[*].projects[*]`. Client-side validation matches `JobSchema` / `ProjectSchema` bounds; `JOB_LIMIT = 20`, `PROJECT_LIMIT = 50` enforced with inline limit messaging rather than letting the contract reject.
+- `/components/PassphraseStrength.tsx`: hand-rolled four-band strength meter (length + character-class count). No zxcvbn dep — only four buckets are needed and zxcvbn's ~400KB dictionary is too heavy.
+- `/app/(app)/tracker/application-detail.tsx`: extracted detail drawer with debounced notes editor (800ms via `useDebouncedCallback`), follow-up date picker (PATCH on blur), status chip grid, alignment recompute button, and events timeline rendered from `useApplicationEvents`.
+- `/hooks/useDebouncedCallback.ts`: a 30-line debounce hook used by the notes editor.
+- `useRecomputeAlignment` query hook + `postApplicationAlignment` in `/lib/mock-api.ts` mirroring `POST /api/applications/:id/alignment` on main.
+- `useApiKeyStore.saveKeyNoPassphrase` and `mode` field. `decryptKey` arg order matches Security's exported signature. The mode persists at the frontend-local key `throughline:apiKeyMode` until `ApiKeyMeta.mode` lands (proposal filed).
+- Settings UI: passphrase strength meter, "Skip passphrase (insecure)" toggle with explicit warning, confirmation modal before clearing the key, "Encrypted" / "Fallback" pill on the saved-key card.
+- `/contracts/proposals/2026-05-16-frontend-apikey-mode.md` (PENDING REVIEW): formalize `mode: 'passphrase' | 'fallback'` on `ApiKeyMeta`.
+- Lighthouse CI: `lighthouserc.json` + `pnpm test:lighthouse` script asserting 90+ on performance / accessibility / best-practices / SEO. Day 3 scope is `/sign-in` only — authenticated-route coverage unblocks on `CI_LIVE_CLERK=1`.
+
+### Changed
+- Design refresh: wordmark "Throughline" now uses Italiana (art-deco display); display headings use Fraunces variable with `font-variation-settings SOFT 80, opsz 144`. Body gains a barely-visible warm radial gradient + inline-SVG paper-grain overlay (~1KB, opacity 0.035). Card radius bumped from `rounded-sm` (2px) to `rounded-md` (6px); border softened to /60. Sidebar wordmark grows to 3xl with an amber rule underneath.
+- `lib/mock-api.ts` discovery + watchlist seeds now match `tests/fixtures/ats/*`: anthropic/stripe/airbnb (greenhouse), mistral/spotify (lever), linear/notion (ashby).
+- `lib/mock-api.ts` records `created` / `status_change` / `note` events into a new `mockState.applicationEvents` map so `getApplicationEvents` returns realistic timeline data during the parallel sprint.
+- `components/Markdown.tsx`: inline tokenizer now matches `[label](url)` links AND `**bold**` in one pass — citation links in dossiers render as underlined-amber anchors with `target=_blank rel=noopener`. Document hierarchy moved to the editorial palette (Fraunces H1, top-divider H2, mono uppercase H3, amber `◆` bullets).
+- Storybook root cause: `@storybook/nextjs` 9.x ships `@storybook/builder-webpack5`, which calls `cache.shutdown` through a `Hook.tap` Next 15.5's bundled webpack does not expose. Day 2's PR built only because the pnpm cache had stale builder bits. Swap to `@storybook/react-vite`; no stories import next/* primitives. `viteFinal` mirrors the `@/*` tsconfig alias.
+
+### Contract notes
+- `/contracts/proposals/2026-05-16-frontend-apikey-mode.md` filed (PENDING REVIEW). Frontend-local interim key documented; rollback is a single-file change once accepted.
+
+### Carried over
+- Authenticated-route axe-core + Lighthouse runs (the seven `(app)` routes) gated on QA Agent provisioning `CI_LIVE_CLERK=1`. Day 3 a11y + Lighthouse scope is `/sign-in` plus the Storybook per-story addon-a11y pass.
+- `ApiKeyMeta.mode` lives in a frontend-local localStorage key until the proposal above is accepted.
+- `next lint` deprecation warning still surfaces — Foundation-owned migration to the ESLint CLI.
+
 ## [agent/backend-core/d2] — 2026-05-16
 
 ### Added
