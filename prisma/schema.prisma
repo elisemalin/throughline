@@ -1,0 +1,246 @@
+// Throughline persistence schema.
+//
+// Mirrors /contracts/models.ts. The TypeScript Zod schemas are the source of
+// truth; this file translates each type into a Postgres-shaped row. JSON
+// columns are used where the contract nests Zod-validated sub-shapes that are
+// always read together and never queried independently.
+//
+// Architect rules honored here (see ARCHITECTURE.md):
+//   - Application.alignmentScore is a derived read-side field — no column.
+//   - Job.endDate is optional (nested in SkillsDB.jobs JSON; no enforcement).
+//   - SkillsDB.jobs and Application.alignmentAnalysis are JSON columns.
+//   - Project/Job IDs follow P\d{1,4} / J\d{1,4} — validated in Zod, no SQL
+//     constraint.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ApplicationStatus {
+  researching
+  applied
+  screen
+  interview
+  offer
+  rejected
+  withdrawn
+}
+
+enum DocumentKind {
+  resume
+  cover_letter
+  ninety_day
+  dossier
+}
+
+enum AtsProvider {
+  greenhouse
+  lever
+  ashby
+  workday
+}
+
+enum DiscoveryStatus {
+  new
+  viewed
+  drafted
+  dismissed
+}
+
+enum ApplicationEventKind {
+  created
+  status_change
+  note
+  document_generated
+  follow_up
+}
+
+// ---------------------------------------------------------------------------
+// User
+//
+// id matches the Clerk user ID; we shadow the Clerk identity with a local row
+// so we can attach owned rows via foreign key. Email is mirrored from Clerk
+// at sign-up time so server-side queries don't need to round-trip to Clerk
+// for a display value.
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skillsDB           SkillsDB?
+  applications       Application[]
+  documents          Document[]
+  watchlistCompanies WatchlistCompany[]
+  discoveredPostings DiscoveredPosting[]
+}
+
+// ---------------------------------------------------------------------------
+// SkillsDB
+//
+// jobs is a Json column because Job and its nested Projects are always read
+// together and never queried independently (per ARCHITECTURE.md "SkillsDB
+// nested JSON, not relational"). All other top-level fields are flat because
+// the prototype renders them as direct form bindings.
+// ---------------------------------------------------------------------------
+
+model SkillsDB {
+  id          String   @id @default(cuid())
+  ownerId     String   @unique
+  fullName    String   @default("")
+  headline    String   @default("")
+  positioning String   @default("")
+  // Contact is a fixed-shape object; flattening it would inflate the row for
+  // little gain. Stored as Json with Zod validation at the API boundary.
+  contact     Json
+  targetRoles String[] @default([])
+  awards      String[] @default([])
+  // Array of JobSchema (each containing nested ProjectSchema[]).
+  jobs        Json     @default("[]")
+  coreSkills  String[] @default([])
+  tools       String[] @default([])
+  methods     String[] @default([])
+  domains     String[] @default([])
+  keywords    String[] @default([])
+  updatedAt   DateTime @updatedAt
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Application
+//
+// alignmentAnalysis is the persisted snapshot (AlignmentAnalysisSchema in
+// /contracts/models.ts). alignmentScore is NOT a column — it is projected
+// from alignmentAnalysis.score at read time. See ARCHITECTURE.md.
+// ---------------------------------------------------------------------------
+
+model Application {
+  id                 String            @id @default(cuid())
+  ownerId            String
+  company            String
+  role               String
+  url                String?
+  source             String?
+  location           String?
+  remote             Boolean           @default(false)
+  salaryRange        String?
+  jobDescription     String?
+  status             ApplicationStatus
+  appliedDate        String?
+  followUpDate       String?
+  notes              String?
+  alignmentAnalysis  Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  owner  User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  events ApplicationEvent[]
+
+  @@index([ownerId, status])
+  @@index([ownerId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// ApplicationEvent — append-only history per Application
+// ---------------------------------------------------------------------------
+
+model ApplicationEvent {
+  id            String               @id @default(cuid())
+  applicationId String
+  kind          ApplicationEventKind
+  at            DateTime             @default(now())
+  note          String?
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus?
+  documentId    String?
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, at])
+}
+
+// ---------------------------------------------------------------------------
+// Document — generated artifacts (resume, cover letter, 90-day plan, dossier)
+// ---------------------------------------------------------------------------
+
+model Document {
+  id            String       @id @default(cuid())
+  ownerId       String
+  kind          DocumentKind
+  title         String
+  body          String
+  applicationId String?
+  createdAt     DateTime     @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, kind])
+  @@index([applicationId])
+}
+
+// ---------------------------------------------------------------------------
+// WatchlistCompany — companies the user wants polled for new postings
+// ---------------------------------------------------------------------------
+
+model WatchlistCompany {
+  id          String      @id @default(cuid())
+  ownerId     String
+  company     String
+  atsProvider AtsProvider
+  atsSlug     String
+  active      Boolean     @default(true)
+  lastPolled  DateTime?
+  createdAt   DateTime    @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Same user cannot register the same provider+slug twice; prevents
+  // duplicate polling work and duplicate DiscoveredPosting rows.
+  @@unique([ownerId, atsProvider, atsSlug])
+  @@index([active, lastPolled])
+}
+
+// ---------------------------------------------------------------------------
+// DiscoveredPosting — a posting surfaced by the ATS poller
+//
+// externalId is the provider's posting ID; combined with the watchlist row
+// it is the dedup key the poller uses to skip already-seen postings.
+// ---------------------------------------------------------------------------
+
+model DiscoveredPosting {
+  id                 String          @id @default(cuid())
+  ownerId            String
+  watchlistCompanyId String
+  externalId         String
+  company            String
+  atsProvider        AtsProvider
+  role               String
+  location           String          @default("")
+  remote             Boolean
+  postedAt           DateTime
+  url                String
+  salaryRange        String?
+  jobDescription     String          @default("")
+  alignmentScore     Int?
+  status             DiscoveryStatus
+  applicationId      String?
+  createdAt          DateTime        @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistCompanyId, externalId])
+  @@index([ownerId, status, postedAt])
+}
