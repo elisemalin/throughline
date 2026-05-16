@@ -25,34 +25,34 @@ export type ApiKeyState = {
   clearKey: () => void;
 };
 
+// Mirrors the public signatures of /lib/security/crypto.ts (Security Agent).
+// decryptKey arg order matches Security's exported function exactly:
+// (ciphertext, iv, salt, passphrase) — DO NOT reorder.
 type CryptoModule = {
   encryptKey: (
     plaintext: string,
     passphrase: string,
-  ) => Promise<{ ciphertext: string; salt: string; iv: string }>;
+  ) => Promise<{ ciphertext: string; iv: string; salt: string }>;
   decryptKey: (
     ciphertext: string,
-    passphrase: string,
-    salt: string,
     iv: string,
+    salt: string,
+    passphrase: string,
   ) => Promise<string>;
 };
 
-// WHY: /lib/security/crypto.ts is owned by Security Agent and may not be
-// present during the parallel sprint. Resolve lazily so this store can
-// hydrate from localStorage without crashing the bundle when the module is
-// missing; surface a clear error at the moment the user attempts an action
-// that actually requires crypto.
+// WHY: /lib/security/crypto.ts now ships on main as of PR #6. Dynamic import
+// keeps the store hydratable in non-browser contexts (Server Component
+// rendering of the auth-gated layout) where the SubtleCrypto fallback would
+// otherwise throw at module load; surface a clear error at the moment the
+// user attempts an action that actually requires crypto.
 async function loadCrypto(): Promise<CryptoModule> {
   try {
-    // @ts-expect-error -- /lib/security/crypto.ts is shipped by Security
-    //   Agent on a later day; resolved lazily so a missing module is a
-    //   runtime error, not a typecheck failure.
     const mod = await import('@/lib/security/crypto');
     return mod as CryptoModule;
   } catch {
     throw new Error(
-      'BYOK crypto helpers are not yet available (Security Agent ships /lib/security/crypto.ts).',
+      'BYOK crypto helpers failed to load (/lib/security/crypto.ts).',
     );
   }
 }
@@ -111,7 +111,7 @@ export const useApiKeyStore = create<ApiKeyState>((set) => ({
       throw new Error('No saved Anthropic key. Add one in Settings first.');
     }
     const crypto = await loadCrypto();
-    return crypto.decryptKey(ciphertext, passphrase, salt, iv);
+    return crypto.decryptKey(ciphertext, iv, salt, passphrase);
   },
   clearKey: () => {
     clearStorage();
