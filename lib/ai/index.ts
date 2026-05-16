@@ -8,6 +8,7 @@
 // Both modes share the same signature: `(input, { apiKey }) => Promise<raw>`.
 // Backend Core does not branch on mode; consumer code is identical.
 
+import type { AlignmentInput, AlignmentRawOutput } from '@/contracts/ai';
 import { alignment as alignmentReal } from './workflows/alignment';
 import { alignment as alignmentMock } from './workflows/alignment.mock';
 import { coverLetter as coverLetterReal } from './workflows/coverLetter';
@@ -42,3 +43,45 @@ export const skillsIngest = LIVE ? skillsIngestReal : skillsIngestMock;
 
 export { AIValidationError } from './types';
 export type { CallOptions } from './types';
+
+// ---------------------------------------------------------------------------
+// Backend Core Day-2 compatibility shim.
+//
+// Backend Core's Day-2 handlers landed before AI Integration shipped this
+// namespace's exports. The handlers import `runAlignment`, `runResume`, etc.,
+// and pass a single input arg (no apiKey). The aliases below let those
+// handlers keep working: each accepts the same single-arg shape and forwards
+// to the AI Integration namespace with an empty apiKey (the mock path
+// ignores it; the live path requires a real apiKey, which Day-3 wires from
+// `x-anthropic-key` request headers — TODO documented in CHANGELOG).
+//
+// On Day 3, Backend Core updates each route to read `x-anthropic-key` from
+// the request and call the real namespace exports directly. These aliases
+// disappear in the same PR.
+// ---------------------------------------------------------------------------
+
+const EMPTY_KEY_DAY2 = '';
+
+export function runAlignment(input: AlignmentInput): Promise<AlignmentRawOutput> {
+  return alignment(input, { apiKey: EMPTY_KEY_DAY2 });
+}
+
+export const runResume = (input: Parameters<typeof resume>[0]) =>
+  resume(input, { apiKey: EMPTY_KEY_DAY2 });
+export const runCoverLetter = (input: Parameters<typeof coverLetter>[0]) =>
+  coverLetter(input, { apiKey: EMPTY_KEY_DAY2 });
+export const runNinetyDay = (input: Parameters<typeof ninetyDay>[0]) =>
+  ninetyDay(input, { apiKey: EMPTY_KEY_DAY2 });
+export const runDossier = (input: Parameters<typeof dossier>[0]) =>
+  dossier(input, { apiKey: EMPTY_KEY_DAY2 });
+export const runMockInterview = (input: Parameters<typeof mockInterview>[0]) =>
+  mockInterview(input, { apiKey: EMPTY_KEY_DAY2 });
+export const runIngest = (input: Parameters<typeof skillsIngest>[0]) =>
+  skillsIngest(input, { apiKey: EMPTY_KEY_DAY2 });
+
+// Placeholder retained for Backend Core's skills-ingest handler. AI
+// Integration's real workflow returns the structured DB without warnings;
+// the SkillsIngestResponse.warnings field is filled by the handler from
+// validation hints. Day-3 work replaces this with a per-response warnings
+// list. Until then it is an empty array.
+export const MOCK_INGEST_WARNINGS: readonly string[] = [];

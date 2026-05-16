@@ -12,6 +12,7 @@
     "test:smoke": "playwright test --config=playwright.config.ts tests/smoke",
     "test:e2e:routes": "playwright test --config=playwright.config.ts tests/routes",
     "test:a11y": "playwright test --config=playwright.config.ts tests/routes --grep @a11y",
+    "test:api": "vitest run --config=vitest.config.ts tests/api",
     "test:security": "vitest run --config=vitest.config.ts tests/security",
     "test:ai": "vitest run --config=vitest.config.ts tests/ai",
     "test:ai:live": "AI_MODE=live tsx lib/ai/smoke.ts",

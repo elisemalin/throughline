@@ -1,4 +1,4 @@
-// Vitest config — shared across all test suites (security, ai, ats).
+// Vitest config — shared across all test suites (security, ai, ats, api).
 //
 // WHY env=node: tests exercise Node's built-in SubtleCrypto (Node 22) and
 // pure server code. Path alias `@/*` mirrors tsconfig.json so the same
@@ -10,7 +10,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/security/**/*.test.ts', 'tests/ai/**/*.test.ts', 'tests/ats/**/*.test.ts'],
+    include: [
+      'tests/security/**/*.test.ts',
+      'tests/ai/**/*.test.ts',
+      'tests/ats/**/*.test.ts',
+      'tests/api/**/*.test.ts',
+    ],
     globals: false,
     pool: 'forks',
     testTimeout: 30_000,

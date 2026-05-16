@@ -2,6 +2,25 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/backend-core/d2] — 2026-05-16
+
+### Added
+- 19 route handlers under `/app/api/*` covering every entry in `API_ROUTES` from `/contracts/api.ts`. Each handler: Clerk session gate (401), Zod parse against the contract schema (400 on invalid shape), Prisma I/O, contract-shape response.
+- Server-side helpers at `lib/server/`: `auth.ts` (`requireUserId`), `response.ts` (`jsonError` / `fromZodError` / `readJson`), `skills.ts` (`readSkillsDB` projector).
+- Integration tests under `tests/api/`: 15 files, 68 tests. Each route surface has at least one test for unauthenticated (401), invalid body (400), and contract-shape response.
+- `pnpm test:api` script (vitest already in the workspace from AI Integration / Security).
+
+### Changed
+- Day-2 compatibility shim added by Architect at merge time: `lib/ai/index.ts` keeps AI Integration's real exports AND exposes `runAlignment` / `runResume` / etc. as single-arg wrappers passing `apiKey: ''`. `lib/ats/registry.ts` keeps External Adapter's `ATS_ADAPTERS` AND retains `getAdapter(provider)` / `triggerPoll(ownerId)` shims. Both are Day-3 cleanup.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` and `/lib/mock-api.ts` untouched.
+
+### Carried over
+- Day-3 cleanup: each `/app/api/*` handler reads `x-anthropic-key` from the request and calls AI Integration's real namespace exports directly; legacy aliases removed.
+- Day-3 cleanup: `getAdapter` call sites swap to `ATS_ADAPTERS[p]`; decide on `triggerPoll` (delete or wire `inngest.send`).
+- JIT User row provisioning on first authenticated request is deferred to the Clerk webhook handler (TODO already noted in `middleware.ts`).
+
 ## [agent/frontend/d2] — 2026-05-16
 
 ### Added
