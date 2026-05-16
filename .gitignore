@@ -1,0 +1,33 @@
+# Minimal pre-Day-1 gitignore. Foundation Agent will expand this on Day 1
+# with framework-specific entries (Next.js build artifacts, Prisma migrations,
+# Storybook output, etc.).
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# Dependencies (filled in by Foundation Agent on Day 1)
+node_modules/
+
+# Build / cache
+.next/
+out/
+dist/
+.turbo/
+.vercel/
+
+# Test artifacts
+playwright-report/
+test-results/
+coverage/
