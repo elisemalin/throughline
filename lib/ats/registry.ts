@@ -4,10 +4,13 @@
 // to the matching adapter. The map is exhaustive over AtsProvider so adding a
 // provider in /contracts/models.ts forces a compile error here.
 //
-// Backend Core Day-2 compatibility shim (bottom of file): `getAdapter` and
-// `triggerPoll` are aliases the Day-2 handlers expected before External
-// Adapter shipped its real registry. Day-3 work updates the routes to use
-// `ATS_ADAPTERS` and `inngest.send` directly, and these shims disappear.
+// `getAdapter` and `triggerPoll` are the surfaces Backend Core's Day-2
+// handlers import (`/api/watchlist`, `/api/discovery/poll`). Day-3 keeps the
+// names stable but flips `triggerPoll` from a no-op stub into a real
+// `inngest.send` of `ats/poll.requested`, dispatched to
+// `atsPollRequestedFunction` in /jobs/poll.ts. The response shape is
+// preserved; `newPostings` reads 0 synchronously because the sweep is
+// asynchronous — Backend Core's route already counts the live total from DB.
 
 import type { AtsAdapter } from '@/contracts/ats';
 import type { AtsProvider } from '@/contracts/models';
@@ -15,6 +18,8 @@ import { greenhouseAdapter } from './greenhouse';
 import { leverAdapter } from './lever';
 import { ashbyAdapter } from './ashby';
 import { workdayAdapter } from './workday';
+import { inngest } from '@/jobs/inngest';
+import { ATS_POLL_REQUESTED_EVENT } from '@/jobs/poll';
 
 export const ATS_ADAPTERS: Record<AtsProvider, AtsAdapter> = {
   greenhouse: greenhouseAdapter as AtsAdapter,
@@ -23,28 +28,19 @@ export const ATS_ADAPTERS: Record<AtsProvider, AtsAdapter> = {
   workday: workdayAdapter as AtsAdapter,
 };
 
-// ---------------------------------------------------------------------------
-// Backend Core Day-2 compatibility shim.
-// `getAdapter(provider)` was Backend Core's expected accessor before
-// External Adapter shipped `ATS_ADAPTERS`. The handler in /api/watchlist uses
-// it to validate the slug at add-time. Day-3 replaces with the map directly.
-// ---------------------------------------------------------------------------
-
 export function getAdapter(provider: AtsProvider): AtsAdapter {
   return ATS_ADAPTERS[provider];
 }
 
-// triggerPoll was the Backend-Core-facing Day-2 stub. Real polling runs on
-// the daily Inngest schedule from /jobs/poll.ts. Manual /api/discovery/poll
-// has nothing to dispatch synchronously today; the stub returns a zero-
-// postings response so the route shape is exercised end-to-end. Day-3 work
-// either deletes this or wires inngest.send for an on-demand poll.
-export async function triggerPoll(_ownerId: string): Promise<{
+export async function triggerPoll(ownerId: string): Promise<{
   newPostings: number;
   totalPostings: number;
   polledAt: string;
 }> {
-  void _ownerId;
+  await inngest.send({
+    name: ATS_POLL_REQUESTED_EVENT,
+    data: { ownerId },
+  });
   return {
     newPostings: 0,
     totalPostings: 0,
