@@ -134,6 +134,6 @@ Each entry's one-line justification:
 | `zod` 3.23.8 | Already required by `/contracts/*.ts`; pinned at workspace root. |
 | `tailwindcss` 4.2.4 + `@tailwindcss/postcss` 4.2.4 | Styling per ARCHITECTURE.md. JS config loaded via `@config` directive in `app/globals.css` so design tokens stay in a single TS file. Pinned to 4.2.4 because 4.0.0 ships an older oxide scanner API incompatible with the Next 15.5 css-loader (`Missing field 'negated' on ScannerOptions.sources`). |
 | `autoprefixer` 10.4.20 + `postcss` 8.4.49 | Postcss pipeline required by Tailwind 4's PostCSS plugin; autoprefixer covers vendor prefixes not yet handled by the engine. |
-| `eslint` 9 + `eslint-config-next` 15.5.18 | Lint preset that matches the Next major; CI gate. |
+| `eslint` ^8.x + `eslint-config-next` 15.5.18 | Lint preset that matches the Next major; CI gate. eslint pinned to ^8.x because next-eslint config is still legacy-format; flat-config migration deferred to a separate proposal. |
 | `@playwright/test` 1.60.0 | Smoke harness. Day 1 ships one placeholder spec. |
 | `@types/node` / `@types/react` / `@types/react-dom` | Type-only deps required by TS strict mode against Next 15 and Node 22. |
