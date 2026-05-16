@@ -13,8 +13,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div className="min-h-screen flex bg-stone-950 text-stone-100">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="md:hidden sticky top-0 z-20 border-b border-stone-900 bg-stone-950/95 backdrop-blur px-4 py-3">
-            <div className="text-lg text-amber-200 font-display">Throughline</div>
+          <header className="md:hidden sticky top-0 z-20 border-b border-stone-900/60 bg-stone-950/95 backdrop-blur px-4 py-3">
+            <div className="text-2xl text-amber-200 font-wordmark leading-none">
+              Throughline
+            </div>
           </header>
           <main
             id="main"

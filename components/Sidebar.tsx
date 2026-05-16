@@ -45,11 +45,12 @@ export function Sidebar() {
       aria-label="Primary"
       className="hidden md:flex md:w-56 lg:w-64 shrink-0 border-r border-stone-900 bg-stone-950/60 flex-col"
     >
-      <div className="px-5 py-5 border-b border-stone-900">
-        <div className="text-2xl text-amber-200 leading-none font-display">
+      <div className="px-5 py-6 border-b border-stone-900/60 relative">
+        <div className="text-3xl text-amber-200 leading-none font-wordmark">
           Throughline
         </div>
-        <div className="text-[10px] uppercase tracking-[0.2em] text-stone-600 font-mono mt-1">
+        <div className="mt-2 h-px w-10 bg-amber-200/40" aria-hidden />
+        <div className="text-[10px] uppercase tracking-[0.24em] text-stone-500 font-mono mt-2">
           Job Search OS
         </div>
       </div>
