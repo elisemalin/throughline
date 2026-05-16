@@ -2,6 +2,30 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/security/d3] — 2026-05-16
+
+### Added
+- `tests/security/middleware-composition.test.ts` — exercises `applySecurityMiddleware` across the request shapes the wired-up `middleware.ts` actually sees: API GET (read tier), API GET (ai tier), authenticated page navigation, anonymous public route, exhaustion-to-429 on both tiers with security headers attached, per-user bucket isolation, route-classifier mapping with `it.each` over the four AI routes and four read routes.
+- `tests/security/rate-limit.integration.test.ts` — opt-in real-Upstash test gated on `UPSTASH_REDIS_REST_URL_TEST` + `UPSTASH_REDIS_REST_TOKEN_TEST`. Hits the real `@upstash/ratelimit` sliding-window limiter 60/61 times with a per-run unique identifier (`pid + Date.now()`), prefixed `tl:rl-test:` so it cannot poison prod data. Skips cleanly when env vars are absent; `pnpm test:security:integration` is the explicit opt-in.
+- `pnpm test:security:integration` script. `pnpm test:security` excludes `*.integration.test.ts` so the unit-test gate stays green without external infrastructure.
+- `.env.example`: documented `UPSTASH_REDIS_REST_URL_TEST` / `UPSTASH_REDIS_REST_TOKEN_TEST` conventions.
+- `/contracts/proposals/2026-05-16-security-csp-nonce.md` — formal deferral of the CSP nonce migration with the actual trade-off (forces dynamic rendering on every page, breaks ISR / PPR / CDN cache) instead of the Day-2 misstatement that the API was unstable.
+
+### Changed
+- `middleware.ts` — wired `applySecurityMiddleware` from `@/middleware.security` into the `clerkMiddleware` callback (after `auth.protect()`, before return). Added `/api/webhooks/clerk` to `isPublicRoute` so Clerk's signed webhook POSTs reach Backend Core's handler when it ships (Svix signature is the real defense). Edit coordinated via PR description; Foundation owns the file; Day-1 TODO comment resolved.
+- `docs/threat-model.md` — Boundary 1 (BYOK) gains a row for the composed middleware now being live; Residual-risk paragraph rewritten with the correct CSP-nonce trade-off and a pointer to the formal proposal. New Boundary 4 (Authentication) covers the Clerk session + webhook signature surface that Day-3 wire-up newly exposes. Open items reordered: middleware composition removed (done); CSP nonce reframed; webhook handler tracked as Backend Core's pending item.
+
+### Contract notes
+- `/contracts/proposals/2026-05-16-security-csp-nonce.md` filed `[PENDING REVIEW]`. No `/contracts/*.ts` modified.
+
+### Cross-stream reviews
+- Zero Day-3 PRs from other agents were open as of this PR opening (`gh pr list --state open` returned `[]`). I will adversarially-review each Backend Core / AI Integration / External Adapter / Frontend Day-3 PR at PR-open time per FLOOR.md "two-agent review for high-risk surfaces"; reviews are posted via `gh pr comment` and do not need commits on this branch.
+
+### Carried over
+- Backend Core's `/api/webhooks/clerk` handler: `middleware.ts` is already permissive for the path; Security Agent reviews the Svix signature verification + JIT User row provisioning when the handler ships.
+- `security:`-labeled GitHub issues to be filed against any other-agent PR that fails review.
+- CSP nonce migration: revisit per the filed proposal once Frontend + Architect sign off on the rendering-mode cost.
+
 ## [agent/backend-core/d2] — 2026-05-16
 
 ### Added

@@ -59,10 +59,13 @@ The user's Anthropic API key never crosses the boundary into our server. The bro
 | Clickjacking embed | `frame-ancestors 'none'` (CSP) + `X-Frame-Options: DENY` | `middleware.security.ts`; `tests/security/headers.test.ts` |
 | Mixed-content downgrade | `Strict-Transport-Security max-age=31536000; includeSubDomains` | `middleware.security.ts` |
 | Server logs accidentally capture key material via stack traces or request mirrors | `SERVER_NEVER_STORES_GREP_TOKENS` includes `apiKeyPlaintext`, `apiKeyCiphertext`, `apiKeyIv`, `apiKeySalt`, `kdfKey`, `passphrase` | Security Agent PR-level adversarial review (FLOOR.md "two-agent review for high-risk surfaces") |
+| Security headers + per-user rate limit not enforced because middleware was a library and not wired | `middleware.ts` composes `applySecurityMiddleware` from `@/middleware.security` inside the `clerkMiddleware` callback (Day 3) — every response now carries the seven headers and `/api/*` calls go through the per-user sliding-window bucket | `tests/security/middleware-composition.test.ts` exercises the composed pathway across public / private / API / AI-API request shapes |
 
 ### Residual risk
 
 A determined XSS that bypasses our CSP (e.g. a content injection through a trusted Clerk-served script that gets compromised upstream) can exfiltrate ciphertext + IV + salt and then brute-force the passphrase offline at 100k iterations per guess. Passphrase strength is the user's responsibility; the UI surfaces a strength meter.
+
+The current CSP uses `'strict-dynamic'` with a narrow Clerk + Anthropic + Cloudflare-Turnstile allowlist rather than per-request nonces. Per-request nonces are stricter (an attacker-injected `<script>` would need a valid nonce to execute) but Next.js requires every nonce-using page to be dynamically rendered — which disables ISR, breaks Partial Prerendering, and removes CDN caching. The Day-3 spike that documented this trade-off and the formal deferral are in `/contracts/proposals/2026-05-16-security-csp-nonce.md`.
 
 ---
 
@@ -145,8 +148,31 @@ A gap between (1)/(2) and (3) is acceptable because Security Agent's review is m
 
 ---
 
+## Boundary 4: Authentication — Clerk session + webhook signature
+
+### Trust statement
+
+Every non-public route requires a Clerk session resolved by `middleware.ts` via `clerkMiddleware`. Two exceptions are explicitly public: the marketing landing and the auth pages. A third — `/api/webhooks/clerk` — is intentionally public at the matcher level so Clerk's signed webhook POSTs reach Backend Core's handler; the real defense for that route is Svix signature verification inside the handler.
+
+### Threats and mitigations
+
+| Threat | Mitigation | Enforced by |
+|---|---|---|
+| Unauthenticated request reaches a private route | `clerkMiddleware` with `auth.protect()` on every non-public route; `requireUserId` in `lib/server/auth.ts` re-checks at handler entry as defense in depth | `middleware.ts`; `lib/server/auth.ts`; Backend Core's `tests/api/*` 401 assertions |
+| Attacker POSTs a forged user.created event to provision arbitrary users | Webhook handler must verify the Svix signature (`svix-id`, `svix-timestamp`, `svix-signature` headers) against `CLERK_WEBHOOK_SECRET` before any DB write. Handler MUST reject with 401 on signature failure. Handler MUST write ONLY the User row with the id from the Clerk payload — no extra fields | Backend Core PR (not yet shipped); Security Agent reviews when it lands |
+| Webhook replay attack | Svix signature includes a timestamp; reject signatures older than 5 minutes | Backend Core PR (Svix SDK enforces by default) |
+| Rate-limit bypass via unauthenticated requests | Per-user rate-limit keys require a userId; anonymous requests cannot consume a bucket but also cannot reach any private route. Public routes are GET-only static / Clerk-rendered pages that do not call back into our API | `middleware.security.ts` `applySecurityMiddleware`; `tests/security/middleware-composition.test.ts` "does not rate-limit anonymous requests" |
+| Webhook abuse — flood of valid-signature requests from a compromised Clerk app | Out of scope: if Clerk's signing key is compromised, an attacker can forge arbitrary user events. The Clerk dashboard rotation procedure is the documented response. We do not apply per-IP rate limit here because Clerk's edge network is the source, not the abuser | (operational, not code-side) |
+
+### Residual risk
+
+The webhook route is the only public POST that writes to our DB. If `CLERK_WEBHOOK_SECRET` is leaked, an attacker can JIT-provision arbitrary User rows. Mitigation is operational: secret rotation in the Clerk dashboard plus the studio's secret-scanning hook on commits.
+
+---
+
 ## Open items
 
 - Frontend Agent has not yet shipped the passphrase-strength UI. Until then, `noPassphraseFallback` is a default for users who skip the passphrase step entirely. Tracked: file `/contracts/proposals/2026-05-16-security-passphrase-ux.md` if the UX flow needs negotiation.
-- Backend Core has not yet wired `middleware.security.ts` into Foundation's `middleware.ts`. Day 3 integration item; the integration sketch is documented in the source comments of `middleware.security.ts`.
-- CSP nonce-based script execution is deferred — requires a Next.js middleware → render context handoff that App Router does not surface stably in 15.x. Revisit when Next ships a stable per-render nonce API.
+- `/api/webhooks/clerk` handler not yet shipped. `middleware.ts` already allows the path through (Day 3, Security); Backend Core ships the handler with Svix signature verification on Day 3 — Security Agent reviews at PR-open.
+- CSP nonce migration: spiked on Day 3; deferred per `/contracts/proposals/2026-05-16-security-csp-nonce.md`. The trade-off is not API availability (Next 13.4.20+ supports nonces) but the requirement to force-dynamic-render every page, which disables ISR, Partial Prerendering, and CDN caching. Revisit when Frontend + Architect have signed off on the rendering-mode cost.
+- Subresource Integrity (`experimental.sri.algorithm`) is an alternative that preserves static generation. Currently flagged experimental in Next 14+ and does not address inline-style policy; deferred per the same proposal.
