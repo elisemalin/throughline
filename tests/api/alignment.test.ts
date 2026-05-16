@@ -24,6 +24,21 @@ describe('POST /api/alignment', () => {
     expect(res.status).toBe(401);
   });
 
+  it('returns 400 when x-anthropic-key header is missing', async () => {
+    signedIn();
+    const res = await POST(
+      makeRequest({
+        method: 'POST',
+        url: URL,
+        body: { jobDescription: 'TS engineer' },
+        apiKey: null,
+      }),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe('missing_anthropic_key');
+  });
+
   it('returns 400 when jobDescription is missing', async () => {
     signedIn();
     const res = await POST(makeRequest({ method: 'POST', url: URL, body: {} }));
