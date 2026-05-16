@@ -1,0 +1,49 @@
+# ATS live contract-drift job.
+#
+# WHY separate from `ats-integration.yml`: live drift tests do not need a
+# Postgres DB, no secret is required, and they should run on PRs from forks
+# too (they verify the adapter still matches the provider's wire format).
+# Runs on PR push and nightly so a silent drift surfaces within a day.
+
+name: ATS live drift
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/external-adapter/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/ats/**'
+      - 'tests/ats/**'
+      - 'contracts/ats.ts'
+  schedule:
+    - cron: '0 7 * * *'
+
+jobs:
+  ats-live:
+    runs-on: ubuntu-latest
+    env:
+      ATS_LIVE: '1'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Run live drift suite
+        run: pnpm test:ats:live
