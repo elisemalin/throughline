@@ -1,0 +1,17 @@
+/* WHY: Tailwind 4 is CSS-first; the @import pulls in the engine and the
+   @config directive loads the JS config (tailwind.config.ts) where design
+   tokens are declared. Keeping tokens in TS lets the team grep them and
+   share them with non-Tailwind code paths later. */
+
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+/* Base surface for the entire app — stone-950 matches the prototype. */
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  background-color: rgb(12 10 9);
+  color: rgb(231 229 228);
+}
