@@ -7,7 +7,8 @@ Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 ### Added
 - `tests/ai/prompt-regression.test.ts` — 42 tests across an edge-case input corpus (very short JD, very long resume, mixed scripts, special-character names, prompt-injection attempts). Each case asserts (1) the mock returns shape-valid output through the workflow's RawSchema and (2) the real workflow's user-message builder wraps every user-supplied field in `<UNTRUSTED_INPUT>` so the SECURITY_PREAMBLE defense survives pathological inputs.
 - Cache hit/miss/set counters in `lib/ai/cache.ts` with `getCacheStats()` / `resetCacheStats()` exports. Counters are content-free (hashes only, never prompts or responses) and drive TTL tuning post-launch.
-- `tests/ai/fixtures/live/` — directory for golden live fixtures produced by `pnpm test:ai:live`. Smoke harness writes `<workflow>.json` after each successful call; a fixture diff in CR signals a SYSTEM-prompt change altered model output.
+- `tests/ai/fixtures/live/<workflow>.json` — 7/7 golden fixtures captured via `pnpm test:ai:live` against `claude-sonnet-4-6` (and `claude-opus-4-7` for `skillsIngest` per `MODEL_INGEST_FALLBACK`). All workflows passed validation on first attempt. Total run ~129s; dossier accounts for ~69s due to web_search.
+- Output-format hint appended to every `buildXUser`. WHY: the first live-smoke run revealed sonnet wandered on alignment field names — returned `{id, label}` per requirement instead of the schema's `{requirement, strength, type, evidence, recommendation}`. SYSTEM prompts in `/contracts/ai.ts` are Architect-only; the workflow-owned user message is the right place to pin the exact JSON shape. After the hint landed, all seven workflows passed first-try.
 - `contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md` — request to add a 20-entry `warnings: z.array(z.string()).max(20).default([])` field on `IngestRawSchema` so the model can surface parsing-time issues (ambiguous dates, collapsed duplicates) into the response shape Backend Core already exposes.
 
 ### Changed
@@ -18,7 +19,6 @@ Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 - Filed `contracts/proposals/2026-05-16-ai-skills-ingest-warnings.md` ([PENDING REVIEW]). Knock-on changes (mock fixture, SYSTEM prompt, test update) land in a follow-up PR once approved.
 
 ### Carried over
-- `pnpm test:ai:live` not executed in this PR (no Anthropic key available in the working environment). Smoke harness is ready: drop `ANTHROPIC_API_KEY` into `~/.config/throughline-ai-smoke.env` (or shell rc), `source` it, and run `pnpm test:ai:live` to capture fixtures.
 - `lib/ai/index.ts` Backend-Core Day-2 compatibility shim (`runAlignment` / `runResume` / ... / `MOCK_INGEST_WARNINGS`) left untouched per the Day-3 kickoff; Backend Core's Day-3 PR removes it.
 
 ## [agent/backend-core/d2] — 2026-05-16
