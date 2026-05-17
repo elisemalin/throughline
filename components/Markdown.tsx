@@ -1,11 +1,6 @@
-// Lightweight markdown renderer matching the prototype's behavior at lines
-// 2461-2536. Supports # / ## / ### headings, - / * bullet lists, and inline
-// **bold**. Keeps the dependency surface small — no DOMPurify / no marked.
-//
-// WHY no full markdown lib: the only renderer in scope is document preview
-// (resumes, cover letters, 90-day plans, dossiers) and the prototype's
-// renderer covered the styles in use. Adding `marked` + `dompurify` for this
-// would violate the "no dependency without justification" rule in FLOOR.md.
+// Lightweight markdown renderer. Brutalist heading style: H1 uppercase
+// Space Grotesk tracking-tight, H2 mono uppercase with arctic ornament,
+// H3 bracketed mono caption. Bullets render with a `▸` ornament.
 
 import { Fragment, useMemo, type ReactNode } from 'react';
 
@@ -17,10 +12,6 @@ type Block =
   | { kind: 'h1' | 'h2' | 'h3' | 'p'; text: string }
   | { kind: 'ul'; items: string[] };
 
-// Match either a [label](url) link OR a **bold** run. Run them through one
-// combined tokenizer so we don't double-walk the same line and so a link
-// label can carry bold (rare, but the dossier renderer occasionally lands
-// here).
 const INLINE_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*]+)\*\*/g;
 
 function tokenizeInline(line: string, keyPrefix: string): ReactNode[] {
@@ -29,9 +20,7 @@ function tokenizeInline(line: string, keyPrefix: string): ReactNode[] {
   let match: RegExpExecArray | null;
   let i = 0;
   while ((match = INLINE_PATTERN.exec(line)) !== null) {
-    if (match.index > lastIndex) {
-      out.push(line.slice(lastIndex, match.index));
-    }
+    if (match.index > lastIndex) out.push(line.slice(lastIndex, match.index));
     if (match[1] && match[2]) {
       out.push(
         <a
@@ -39,14 +28,14 @@ function tokenizeInline(line: string, keyPrefix: string): ReactNode[] {
           href={match[2]}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-amber-200 underline decoration-amber-200/40 underline-offset-2 hover:decoration-amber-200"
+          className="text-arctic-200 underline decoration-arctic-400/60 underline-offset-2 hover:decoration-arctic-200"
         >
           {match[1]}
         </a>,
       );
     } else if (match[3]) {
       out.push(
-        <strong key={`${keyPrefix}-${i++}`} className="text-stone-100 font-semibold">
+        <strong key={`${keyPrefix}-${i++}`} className="text-stone-50 font-bold">
           {match[3]}
         </strong>,
       );
@@ -98,13 +87,13 @@ function parseBlocks(source: string): Block[] {
 export function Markdown({ children }: MarkdownProps) {
   const blocks = useMemo(() => parseBlocks(children), [children]);
   return (
-    <article className="space-y-4 text-[15px] text-stone-300 leading-relaxed font-sans">
+    <article className="space-y-4 text-sm text-stone-300 leading-relaxed">
       {blocks.map((block, idx) => {
         if (block.kind === 'h1') {
           return (
             <h1
               key={idx}
-              className="text-3xl md:text-4xl text-stone-100 font-display tracking-tight mt-2"
+              className="text-2xl md:text-3xl text-stone-50 font-sans font-bold uppercase tracking-[-0.03em] leading-none mt-2"
             >
               {tokenizeInline(block.text, `h1-${idx}`)}
             </h1>
@@ -114,8 +103,9 @@ export function Markdown({ children }: MarkdownProps) {
           return (
             <h2
               key={idx}
-              className="text-xl text-stone-100 font-display mt-6 pt-3 border-t border-stone-900/60"
+              className="text-sm text-stone-100 font-mono uppercase tracking-[0.12em] mt-6 pt-3 border-t-2 border-stone-800 flex items-baseline gap-2"
             >
+              <span aria-hidden className="text-amber-200/80">▸</span>
               {tokenizeInline(block.text, `h2-${idx}`)}
             </h2>
           );
@@ -124,20 +114,20 @@ export function Markdown({ children }: MarkdownProps) {
           return (
             <h3
               key={idx}
-              className="text-[10px] uppercase tracking-[0.2em] text-amber-200/80 font-mono mt-4"
+              className="label-mono text-arctic-200 mt-4 flex items-center gap-2"
             >
+              <span aria-hidden className="text-stone-700">[</span>
               {tokenizeInline(block.text, `h3-${idx}`)}
+              <span aria-hidden className="text-stone-700">]</span>
             </h3>
           );
         }
         if (block.kind === 'ul') {
           return (
-            <ul key={idx} className="space-y-1.5 pl-1">
+            <ul key={idx} className="space-y-1.5">
               {block.items.map((item, i) => (
-                <li key={i} className="flex items-baseline gap-2.5">
-                  <span aria-hidden className="text-amber-200/60 shrink-0">
-                    ◆
-                  </span>
+                <li key={i} className="flex items-baseline gap-2">
+                  <span aria-hidden className="text-amber-200/80 shrink-0">▸</span>
                   <span>{tokenizeInline(item, `li-${idx}-${i}`)}</span>
                 </li>
               ))}

@@ -1,6 +1,6 @@
 /* WHY: Tailwind 4 is CSS-first; the @import pulls in the engine and the
    @config directive loads the JS config (tailwind.config.ts) where design
-   tokens are declared. Keeping tokens in TS lets the team grep them. */
+   tokens are declared. */
 
 @import "tailwindcss";
 @config "../tailwind.config.ts";
@@ -9,104 +9,95 @@
   color-scheme: dark;
 }
 
+/* Flat opaque base — Day 5 brutalist reset drops the Day-4 paper grain
+   overlay and warm radial gradients. The look is hard, dense, opaque. */
 html, body {
-  background-color: rgb(12 10 9);
-  color: rgb(231 229 228);
-  font-feature-settings: "ss01", "calt";
+  background-color: rgb(12 10 9);            /* stone-950 */
+  color: rgb(231 229 228);                   /* stone-200 */
 }
 
 body {
-  /* Warm radial pulse from upper-left + a quieter cool radial from the
-     lower-right. Combined with the noise overlay below it gives the
-     surface a printed-paper warmth instead of the flat-dark default. */
-  background-image:
-    radial-gradient(
-      ellipse 70vw 40vh at 14% -10%,
-      rgba(253, 230, 138, 0.06),
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse 50vw 60vh at 100% 110%,
-      rgba(180, 140, 90, 0.045),
-      transparent 60%
-    );
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-  position: relative;
+  /* WHY: ss01 is Space Grotesk's stylistic alt for the single-storey `a`,
+     which reads more geometric / brutalist. cv11 enables the slashed
+     zero for digit columns when font-feature-settings cascade fires. */
+  font-feature-settings: "ss01", "cv11";
+  letter-spacing: -0.01em;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.04;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-
-/* Body / paragraph defaults: Fraunces at an opsz that reads as text-grade
-   and a slight SOFT lift so the serifs do not feel academic. */
-body, .font-display {
-  font-variation-settings: "SOFT" 50, "opsz" 14;
-  letter-spacing: -0.005em;
-}
-
-/* Display headings push opsz up to the display range with more SOFT. */
-h1, h2, h3, .display-xl, .display-lg {
-  font-variation-settings: "SOFT" 80, "opsz" 144;
-  letter-spacing: -0.012em;
-}
-
-/* The brand wordmark uses Italiana. Letter-spacing widens it so the four
-   capitals carry presence even at small sizes in the sidebar. */
-.font-wordmark {
-  letter-spacing: 0.04em;
-  font-feature-settings: "liga", "dlig";
-}
-
-/* Throughline's mono-uppercase caption pattern that used to ride on
-   JetBrains Mono is now Fraunces with wide tracking + tabular numerics +
-   a slightly bolder weight. Reads as an editorial label rather than a
-   robotic mono-stamp. */
-.caption-label {
-  font-variation-settings: "opsz" 12;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.22em;
+/* Heavy bracketed mono label used as a typesetting caption everywhere
+   the previous design had `.caption-label`. The brackets are part of
+   the text via [data-bracket] so they can be styled / hidden per usage
+   without changing copy. */
+.label-mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-weight: 400;
   font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(168 162 158);                   /* stone-400 */
 }
 
-/* Tabular numerics for stats / scores / dates. */
+/* Display heading utility — large, extreme weight, tight tracking,
+   uppercase by default. Used for route titles. */
+.display-xl {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: clamp(2.5rem, 4vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+
+/* Tabular numerics for stats / scores / dates. Space Grotesk ships
+   tabular-nums via the OpenType feature. */
 .tab-nums {
-  font-variant-numeric: tabular-nums lining-nums;
-  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+  font-feature-settings: "tnum", "lnum", "zero";
 }
 
+/* Arctic-blue selection — replaces the prior amber selection so signals
+   and selections are visually distinct (amber = primary action,
+   arctic = system signal). */
 ::selection {
-  background-color: rgba(253, 230, 138, 0.22);
-  color: rgb(253, 230, 138);
+  background-color: rgba(79, 163, 255, 0.32);
+  color: rgb(183, 216, 255);
 }
 
-/* Underline-animated focus state used by the form field family. The
-   parent input sets position: relative and renders this pseudo via a
-   utility class so we do not have to add a wrapper element. */
-.focus-underline {
+/* Focus ring — arctic underline shift used by the input family. */
+.focus-arctic {
   position: relative;
 }
-.focus-underline::after {
+.focus-arctic::after {
   content: '';
   position: absolute;
   left: 0;
-  bottom: 0;
-  height: 2px;
+  bottom: -3px;
+  height: 3px;
   width: 100%;
-  background-color: rgb(253 230 138);
+  background-color: rgb(79 163 255);         /* arctic-400 */
   transform: scaleX(0);
   transform-origin: left;
-  transition: transform 160ms ease-out;
+  transition: transform 140ms ease-out;
 }
-.focus-underline:focus-within::after {
+.focus-arctic:focus-within::after {
   transform: scaleX(1);
+}
+
+/* Skip-link styling — keeps WCAG keyboard nav working through the
+   brutalist surfaces. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+}
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  z-index: 60;
+  background: rgb(253 230 138);
+  color: rgb(12 10 9);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }

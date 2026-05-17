@@ -300,7 +300,27 @@ Shipped on branch `agent/backend-core/d2`:
 
 **Why:** Security Agent's `noPassphraseFallback` deliberately produces the same on-disk shape as the strong path. The UI must know which mode wrote the saved key (the unlock paths differ). `ApiKeyMeta` in `/contracts/storage.ts` has no `mode` field. Filed `/contracts/proposals/2026-05-16-frontend-apikey-mode.md` (ACCEPTED on main); on Day 4 the frontend-local `throughline:apiKeyMode` shim was removed and the store reads `meta.mode` directly.
 
-### Decision — single-serif type system (Day 4)
+### Decision — brutalist visual identity + Space Grotesk / Space Mono (Day 5)
+
+**Why:** Day 3 (Italiana + Fraunces) and Day 4 (Italiana wordmark + Fraunces everywhere else) both shipped serif-led typography. The user rejected the direction entirely with the verbatim correction *"It still reads generic as fuck to me, we def need to make this more unique. I think the main thing is that I hate serif fonts on websites, it looks like placeholder shit no matter the site imo."* Day 5 locks two non-serif Google Fonts (Space Grotesk variable for display / body / wordmark / numerics; Space Mono for captions / labels / bracketed metadata) and reorients the visual system around brutalist conventions: heavy 2-3px borders, `rounded-none` default, flat opaque cards, bracketed mono captions, ornament marks, `text-6xl`+ tabular numerics for stats, and arctic blue `#4FA3FF` as the secondary signal colour. The earlier Day-4 layered-translucent card direction is reverted (`shadow-editorial`, `backdrop-blur`, gradient backgrounds removed).
+
+**Cost:** The mono-uppercase caption pattern returns and is now the dominant text treatment. Body copy reads as denser / more technical than Fraunces did. The single-serif aspiration of Day 4 is gone — Tailwind `font-sans` and `font-mono` both resolve to non-serif Google Fonts now.
+
+**Reference touchstones (internalized, not copied):** Cabinet Studio, Are.na block grid, Read.cv vertical density, Stripe Press editorial structure (NOT for type — they use serif which is out), Raycast docs block hierarchy. These shaped the bracketed-mono caption pattern, the heavy-rule section dividers, the `[ §0N / NAME ]` route-header convention, and the asymmetric-density Dashboard layout.
+
+### Decision — mock-api → api-client swap (Day 5)
+
+**Why:** The Day-5 milestone flips every `/lib/queries/*` hook from the in-memory mock layer to a real fetch client at `/lib/api-client.ts`. The client validates every response through a Zod schema composed from `/contracts/models.ts` + `/contracts/api.ts` (mirrors what Backend Core handlers produce) and throws a typed `ApiClientError { status, code: ApiErrorCode, details? }` on non-2xx. Hook signatures are unchanged so callers do not move; the existing TanStack Query cache and invalidation logic carries forward.
+
+BYOK is forwarded explicitly: AI hooks take an extra `apiKey` parameter that they pull from a new in-memory `useByokKey` store via `readByokKeyOrThrow()`. The plaintext key never enters localStorage and clears on tab close; Settings's Save / Unlock flows populate the store. Locked-state errors map to the same `missing_anthropic_key` code the server emits so the error UI is uniform across server-side rejection and client-side absence.
+
+`/lib/mock-api.ts` stays in the repo as a Day-6 deletion target but has zero remaining importers (`rg "from '@/lib/mock-api'"` is empty outside the file's own header comment).
+
+### Decision — single-serif type system (Day 4) [SUPERSEDED]
+
+> **Superseded by the Day 5 Space Grotesk + Space Mono decision above.** The Day 4 Fraunces-only direction was rejected. Kept here for history because future architecture readers need to understand why Tailwind `font-sans` / `font-mono` got remapped twice in two days.
+
+
 
 **Why:** Day 3 swapped the display font to Fraunces but kept DM Sans + JetBrains Mono for everything else. The user pushed back: that still felt "obviously coded with Claude agents" — the body face was a generic geometric sans and the mono captions read as a default Tailwind / shadcn caption. Day 4 collapses the type system to two families total — Italiana (wordmark only) and Fraunces (everything else, including what used to be mono captions). Tailwind's `font-sans` and `font-mono` map to the same Fraunces variable so any leftover utility class cannot silently revert to system fonts. The Fraunces variable axes (SOFT + opsz) are tuned per use case in `globals.css`: body sits at SOFT 50 / opsz 14, display at SOFT 80 / opsz 144, captions at opsz 12 with wide tracking and weight 500.
 

@@ -1,25 +1,23 @@
 'use client';
 
-// Underline-style text input. Day 4 drops the boxed `bg-stone-900/80 +
-// border` chrome that read as default shadcn; the field is now a
-// transparent line with a 2px amber focus underline that slides in from
-// the left over 160ms (.focus-underline in globals.css).
+// Brutalist input — transparent background, 3px bottom border (heavy
+// stone), focus underline shifts to arctic blue via `.focus-arctic`
+// in globals.css. No corner radius, no boxed frame by default.
 //
-// A `boxed` variant remains for cases where the field genuinely needs a
-// frame to be legible — the BYOK API-key field where masked-text would
-// otherwise float in space.
+// `variant="boxed"` keeps a fully-framed form-field for the BYOK
+// password input where masked text needs containment to read.
 
 import type { InputHTMLAttributes } from 'react';
 
 export type InputProps = {
   variant?: 'underline' | 'boxed';
-  mono?: boolean; // back-compat: tabular numerics on Fraunces
+  mono?: boolean;
 } & InputHTMLAttributes<HTMLInputElement>;
 
 const underlineWrap =
-  'focus-underline block border-b border-stone-700 hover:border-stone-500 transition-colors';
+  'focus-arctic block border-b-[3px] border-stone-700 hover:border-stone-500 transition-colors';
 const boxedWrap =
-  'block rounded-md ring-1 ring-stone-800 bg-stone-950/60 hover:ring-stone-700 focus-within:ring-amber-200/60 transition';
+  'block border-2 border-stone-700 bg-stone-950 hover:border-stone-500 focus-within:border-arctic-400 transition-colors';
 
 const underlineInput =
   'block w-full bg-transparent px-0 py-2 text-stone-100 placeholder-stone-600 focus:outline-none';
@@ -39,7 +37,7 @@ export function Input({
     <span className={wrap}>
       <input
         type={type}
-        className={`${inner} ${mono ? 'tab-nums text-sm tracking-[0.01em]' : 'text-sm'} ${className}`}
+        className={`${inner} ${mono ? 'font-mono tab-nums text-sm tracking-[0.02em]' : 'text-sm'} ${className}`}
         {...rest}
       />
     </span>

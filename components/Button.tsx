@@ -1,10 +1,13 @@
 'use client';
 
-// Button family. Day 4 adds rest-state dimming, a hover-lift micro-
-// interaction, and a press-down on active so the primary CTA feels
-// intentional rather than a flat colour rectangle.
+// Brutalist button. Block primary (solid amber + heavy border + sharp
+// corners), block secondary (transparent + heavy border), ghost (mono
+// caption only), danger (transparent + heavy rose border). Active state
+// shifts the button 1px down rather than the prior hover-lift +
+// gradient. Arrow ornament available via the `arrow` prop.
 
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { Ornament } from './Ornament';
 
 export const BUTTON_VARIANTS = ['primary', 'secondary', 'ghost', 'danger'] as const;
 export type ButtonVariant = (typeof BUTTON_VARIANTS)[number];
@@ -16,52 +19,37 @@ export type ButtonProps = {
   children: ReactNode;
   variant?: ButtonVariant;
   size?: ButtonSize;
+  arrow?: boolean;
 } & ButtonHTMLAttributes<HTMLButtonElement>;
 
 const base = [
-  'inline-flex items-center gap-2 font-display font-medium',
-  'transition-[transform,background-color,color,box-shadow] duration-150 ease-out',
-  'will-change-transform',
-  'hover:-translate-y-px active:translate-y-px',
-  'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0',
-  // Custom focus: amber underline ring without the generic blue browser
-  // outline.
+  'inline-flex items-center gap-2 font-sans font-medium uppercase tracking-[0.08em]',
+  'rounded-none border-2',
+  'transition-transform duration-100',
+  'active:translate-y-px',
+  'disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-y-0',
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
-  'focus-visible:ring-amber-200/70 focus-visible:ring-offset-stone-950',
+  'focus-visible:ring-arctic-400 focus-visible:ring-offset-stone-950',
 ].join(' ');
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: [
-    'text-stone-950',
-    'bg-gradient-to-b from-amber-100 to-amber-200',
-    'hover:from-amber-50 hover:to-amber-100',
-    'hover:shadow-[0_8px_24px_-12px_rgba(253,230,138,0.45)]',
-  ].join(' '),
-  secondary: [
-    'text-stone-200 ring-1 ring-stone-700/70 bg-stone-900/40',
-    'hover:text-stone-50 hover:ring-amber-200/60 hover:bg-stone-900/70',
-    'opacity-90 hover:opacity-100',
-  ].join(' '),
-  ghost: [
-    'text-stone-400 bg-transparent',
-    'hover:text-amber-200 hover:bg-stone-900/50',
-  ].join(' '),
-  danger: [
-    'text-rose-200 ring-1 ring-rose-900/80 bg-rose-950/40',
-    'hover:bg-rose-900/40 hover:text-rose-100',
-  ].join(' '),
+  primary: 'bg-amber-200 text-stone-950 border-amber-200 hover:bg-amber-100 hover:border-amber-100',
+  secondary: 'bg-stone-950 text-stone-100 border-stone-100 hover:border-arctic-400 hover:text-arctic-200',
+  ghost: 'bg-transparent text-stone-400 border-transparent hover:text-amber-200',
+  danger: 'bg-stone-950 text-rose-200 border-rose-300/80 hover:bg-rose-950/40 hover:border-rose-300',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  sm: 'text-xs px-3 py-1.5 rounded-md',
-  md: 'text-sm px-4 py-2 rounded-md',
-  lg: 'text-base px-5 py-2.5 rounded-md',
+  sm: 'text-[11px] px-3 py-1.5',
+  md: 'text-xs px-4 py-2',
+  lg: 'text-sm px-5 py-2.5',
 };
 
 export function Button({
   children,
   variant = 'primary',
   size = 'md',
+  arrow = false,
   className = '',
   type,
   ...rest
@@ -73,6 +61,7 @@ export function Button({
       {...rest}
     >
       {children}
+      {arrow && <Ornament kind="arrow" className="font-mono text-current" />}
     </button>
   );
 }

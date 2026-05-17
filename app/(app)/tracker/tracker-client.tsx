@@ -13,7 +13,9 @@ import {
   Field,
   Input,
   Modal,
+  Ornament,
   Pill,
+  RouteHeader,
   Textarea,
 } from '@/components';
 import type { ApplicationStatus } from '@/contracts/models';
@@ -90,22 +92,23 @@ export function TrackerClient() {
 
   return (
     <div className="space-y-10">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div className="space-y-3">
-          <div className="caption-label text-stone-500">Heartbeat</div>
-          <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
-            Tracker
-          </h1>
-          <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
-            Every active conversation. Status moves are the only signal that matters.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setOpenCreate(true)} data-testid="tracker-add">
-          <Plus size={14} aria-hidden /> Add application
-        </Button>
-      </header>
+      <RouteHeader
+        section="§04"
+        name="TRACKER"
+        title="Tracker"
+        sub="Every active conversation. Status moves are the only signal that matters."
+        right={
+          <Button size="sm" onClick={() => setOpenCreate(true)} data-testid="tracker-add" arrow>
+            <Plus size={14} aria-hidden /> Add application
+          </Button>
+        }
+      />
 
-      <div className="flex flex-wrap gap-1 border-b border-stone-100/5 pb-1" role="tablist" aria-label="Status filter">
+      <div
+        className="flex flex-wrap gap-1 border-b-2 border-stone-800"
+        role="tablist"
+        aria-label="Status filter"
+      >
         {(['all', 'active', ...STATUSES] as StatusFilter[]).map((f) => (
           <button
             key={f}
@@ -113,19 +116,13 @@ export function TrackerClient() {
             role="tab"
             aria-selected={filter === f}
             onClick={() => setFilter(f)}
-            className={`relative caption-label px-3 py-2 transition-colors ${
+            className={`relative font-mono text-xs uppercase tracking-[0.1em] px-3 py-2.5 transition-colors -mb-[2px] border-b-2 ${
               filter === f
-                ? 'text-amber-200'
-                : 'text-stone-600 hover:text-stone-300'
+                ? 'text-amber-200 border-amber-200'
+                : 'text-stone-600 border-transparent hover:text-stone-300'
             }`}
           >
             {f === 'all' ? 'All' : f === 'active' ? 'Active' : statusLabel(f)}
-            {filter === f && (
-              <span
-                aria-hidden
-                className="absolute left-3 right-3 -bottom-1 h-[2px] bg-amber-200 rounded-full"
-              />
-            )}
           </button>
         ))}
       </div>
@@ -135,20 +132,21 @@ export function TrackerClient() {
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <Card className="px-8 py-14 text-center space-y-4">
-          <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+        <Card className="px-8 py-14 text-center space-y-5">
+          <Ornament kind="diamond" className="text-amber-200/70 text-2xl block" />
+          <p className="display-xl text-2xl md:text-3xl text-stone-50 max-w-md mx-auto">
             {applications.length === 0
               ? 'Track the first one.'
               : 'Nothing under this filter.'}
           </p>
-          <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
+          <p className="font-mono text-xs text-stone-500 max-w-sm mx-auto">
             {applications.length === 0
-              ? 'Status moves are the heartbeat.'
-              : 'Try Active.'}
+              ? '[ STATUS MOVES ARE THE HEARTBEAT ]'
+              : '[ TRY THE ACTIVE FILTER ]'}
           </p>
           {applications.length === 0 && (
             <div className="pt-2">
-              <Button size="sm" onClick={() => setOpenCreate(true)}>
+              <Button size="sm" onClick={() => setOpenCreate(true)} arrow>
                 <Plus size={14} aria-hidden /> Add an application
               </Button>
             </div>
@@ -185,8 +183,8 @@ export function TrackerClient() {
                     </div>
                   </div>
                   {typeof a.alignmentScore === 'number' && (
-                    <span className="tab-nums text-lg text-amber-200 bg-amber-950/20 ring-1 ring-amber-900/30 rounded-md px-2.5 py-0.5">
-                      {a.alignmentScore}%
+                    <span className="tab-nums font-sans font-bold text-2xl text-amber-200">
+                      {a.alignmentScore}
                     </span>
                   )}
                   <Pill tone={STATUS_TONES[a.status]}>{statusLabel(a.status)}</Pill>
@@ -221,7 +219,7 @@ export function TrackerClient() {
             <select
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value as ApplicationStatus })}
-              className="w-full bg-stone-900/80 border border-stone-800 rounded-sm px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-amber-200/60"
+              className="w-full bg-stone-950 border-2 border-stone-700 rounded-none px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-arctic-400"
             >
               {STATUSES.map((s) => (
                 <option key={s} value={s}>

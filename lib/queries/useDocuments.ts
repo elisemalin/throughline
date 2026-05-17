@@ -8,7 +8,8 @@ import {
   postDossier,
   postNinetyDayPlan,
   postResume,
-} from '@/lib/mock-api';
+} from '@/lib/api-client';
+import { readByokKeyOrThrow } from '@/stores/useByokKey';
 import type {
   CoverLetterRequest,
   DossierRequest,
@@ -27,7 +28,10 @@ export function useDocuments() {
 export function useGenerateResume() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (req: ResumeRequest) => postResume(req),
+    mutationFn: (req: ResumeRequest) => {
+      const apiKey = readByokKeyOrThrow();
+      return postResume(req, apiKey);
+    },
     onSuccess: () => client.invalidateQueries({ queryKey: QK.documents }),
   });
 }
@@ -35,7 +39,10 @@ export function useGenerateResume() {
 export function useGenerateCoverLetter() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (req: CoverLetterRequest) => postCoverLetter(req),
+    mutationFn: (req: CoverLetterRequest) => {
+      const apiKey = readByokKeyOrThrow();
+      return postCoverLetter(req, apiKey);
+    },
     onSuccess: () => client.invalidateQueries({ queryKey: QK.documents }),
   });
 }
@@ -43,7 +50,10 @@ export function useGenerateCoverLetter() {
 export function useGenerateNinetyDay() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (req: NinetyDayRequest) => postNinetyDayPlan(req),
+    mutationFn: (req: NinetyDayRequest) => {
+      const apiKey = readByokKeyOrThrow();
+      return postNinetyDayPlan(req, apiKey);
+    },
     onSuccess: () => client.invalidateQueries({ queryKey: QK.documents }),
   });
 }
@@ -51,7 +61,10 @@ export function useGenerateNinetyDay() {
 export function useGenerateDossier() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (req: DossierRequest) => postDossier(req),
+    mutationFn: (req: DossierRequest) => {
+      const apiKey = readByokKeyOrThrow();
+      return postDossier(req, apiKey);
+    },
     onSuccess: () => client.invalidateQueries({ queryKey: QK.documents }),
   });
 }

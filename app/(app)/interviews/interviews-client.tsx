@@ -7,7 +7,16 @@
 
 import { useState } from 'react';
 import { MessageSquare, Send } from 'lucide-react';
-import { Button, Card, Field, Pill, SectionLabel, Textarea } from '@/components';
+import {
+  Button,
+  Card,
+  Field,
+  Ornament,
+  Pill,
+  RouteHeader,
+  SectionLabel,
+  Textarea,
+} from '@/components';
 import type { MockInterviewTurn } from '@/contracts/api';
 import { useApplications } from '@/lib/queries/useApplications';
 import { useMockInterviewTurn } from '@/lib/queries/useMockInterview';
@@ -84,18 +93,14 @@ export function InterviewsClient() {
 
   return (
     <div className="space-y-10">
-      <header className="space-y-3">
-        <div className="caption-label text-stone-500">Rehearsal room</div>
-        <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
-          Interviews
-        </h1>
-        <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
-          Practice with the mock interviewer or rehearse the STAR stories your Skills DB
-          generates.
-        </p>
-      </header>
+      <RouteHeader
+        section="§06"
+        name="INTERVIEWS"
+        title="Interviews"
+        sub="Practice with the mock interviewer or rehearse the STAR stories your Skills DB generates."
+      />
 
-      <div className="flex gap-2" role="tablist" aria-label="Interview tab">
+      <div className="flex gap-1 border-b-2 border-stone-800" role="tablist" aria-label="Interview tab">
         {(['mock', 'stories'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -103,10 +108,8 @@ export function InterviewsClient() {
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`text-xs uppercase tracking-[0.2em] font-mono px-3 py-2 rounded-sm border ${
-              tab === t
-                ? 'border-amber-200/60 text-amber-200 bg-amber-900/20'
-                : 'border-stone-800 text-stone-500 hover:text-stone-200'
+            className={`relative font-mono text-xs uppercase tracking-[0.1em] px-4 py-2.5 transition-colors -mb-[2px] border-b-2 ${
+              tab === t ? 'text-amber-200 border-amber-200' : 'text-stone-600 border-transparent hover:text-stone-300'
             }`}
           >
             {t === 'mock' ? 'Mock interview' : 'Stories'}
@@ -155,8 +158,8 @@ export function InterviewsClient() {
                         t.role === 'interviewer' ? 'text-stone-200' : 'text-amber-100'
                       }`}
                     >
-                      <span className="text-[10px] uppercase tracking-[0.2em] font-mono text-stone-500 mr-2">
-                        {t.role === 'interviewer' ? 'Interviewer' : 'You'}
+                      <span className="label-mono text-stone-500 mr-2">
+                        [ {t.role === 'interviewer' ? 'INTERVIEWER' : 'YOU'} ]
                       </span>
                       {t.text}
                     </li>
@@ -189,13 +192,13 @@ export function InterviewsClient() {
       {tab === 'stories' && (
         <>
           {stories.length === 0 ? (
-            <Card className="px-8 py-14 text-center space-y-4">
-              <MessageSquare size={28} className="text-amber-200/40 mx-auto" aria-hidden />
-              <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+            <Card className="px-8 py-14 text-center space-y-5">
+              <MessageSquare size={28} className="text-amber-200/70 mx-auto" aria-hidden />
+              <p className="display-xl text-2xl md:text-3xl text-stone-50 max-w-md mx-auto">
                 Add a project to your Skills DB.
               </p>
-              <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
-                The stories write themselves.
+              <p className="font-mono text-xs text-stone-500 max-w-sm mx-auto">
+                [ THE STORIES WRITE THEMSELVES ]
               </p>
             </Card>
           ) : (
@@ -204,30 +207,32 @@ export function InterviewsClient() {
                 <li key={story.id}>
                   <Card className="p-5">
                     <div className="flex items-baseline gap-3 flex-wrap mb-2">
-                      <div className="text-base text-stone-100 font-display">{story.title}</div>
-                      <div className="text-xs text-stone-500 font-mono">{story.employer}</div>
+                      <div className="text-base text-stone-50 font-sans font-bold uppercase tracking-[-0.01em]">
+                        {story.title}
+                      </div>
+                      <div className="label-mono text-stone-500">[ {story.employer} ]</div>
                     </div>
                     <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-stone-300">
                       <div>
-                        <dt className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono">
+                        <dt className="label-mono text-stone-400">
                           Situation
                         </dt>
                         <dd>{story.situation}</dd>
                       </div>
                       <div>
-                        <dt className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono">
+                        <dt className="label-mono text-stone-400">
                           Task
                         </dt>
                         <dd>{story.task}</dd>
                       </div>
                       <div>
-                        <dt className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono">
+                        <dt className="label-mono text-stone-400">
                           Action
                         </dt>
                         <dd>{story.action}</dd>
                       </div>
                       <div>
-                        <dt className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono">
+                        <dt className="label-mono text-stone-400">
                           Result
                         </dt>
                         <dd>{story.result}</dd>

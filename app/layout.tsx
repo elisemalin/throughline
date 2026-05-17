@@ -1,36 +1,31 @@
 // Root layout for the entire app.
 //
-// WHY ClerkProvider wraps the tree: Clerk's hooks read session context from
-// React. Fonts load via next/font/google so they are self-hosted (no FOUT,
-// no third-party DNS) and exposed as CSS variables Tailwind consumes.
-//
-// Day 4 hard rule: only two font families ship.
-//   - Italiana for the wordmark only.
-//   - Fraunces variable (with SOFT + opsz axes) for body, display, captions,
-//     and tabular numerics.
-// DM Sans and JetBrains Mono are gone — they read as the default Tailwind
-// / shadcn starter combo that the user explicitly called out as "obviously
-// coded by Claude agents."
+// Day 5 type-system reset:
+//   - Space Grotesk variable — display, body, large numerics, wordmark.
+//   - Space Mono — captions, labels, bracketed metadata, tabular signals.
+// Italiana and Fraunces (Day 3 / Day 4 directions) are out. The user
+// rejected serif-led design entirely: "I hate serif fonts on websites,
+// it looks like placeholder shit no matter the site imo." Hard rule
+// going forward: no serif fonts on websites.
 
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { ClerkProvider } from '@clerk/nextjs';
-import { Fraunces, Italiana } from 'next/font/google';
+import { Space_Grotesk, Space_Mono } from 'next/font/google';
 
 import './globals.css';
 
-const fontWordmark = Italiana({
-  weight: '400',
+const fontSans = Space_Grotesk({
   subsets: ['latin'],
-  variable: '--font-wordmark',
+  variable: '--font-sans',
   display: 'swap',
 });
 
-const fontDisplay = Fraunces({
+const fontMono = Space_Mono({
   subsets: ['latin'],
-  variable: '--font-display',
+  weight: ['400', '700'],
+  variable: '--font-mono',
   display: 'swap',
-  axes: ['SOFT', 'opsz'],
 });
 
 export const metadata: Metadata = {
@@ -56,11 +51,8 @@ export default async function RootLayout({
   const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <ClerkProvider nonce={nonce}>
-      <html
-        lang="en"
-        className={`${fontWordmark.variable} ${fontDisplay.variable}`}
-      >
-        <body className="font-display antialiased">{children}</body>
+      <html lang="en" className={`${fontSans.variable} ${fontMono.variable}`}>
+        <body className="font-sans antialiased">{children}</body>
       </html>
     </ClerkProvider>
   );

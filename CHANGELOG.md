@@ -2,6 +2,41 @@
 
 Every agent appends one entry per end-of-day commit per FLOOR.md cadence.
 
+## [agent/frontend/d5] — 2026-05-16
+
+### Added
+- `/lib/api-client.ts` — real fetch layer covering every `API_ROUTES` entry. Composes Zod response schemas from `/contracts/models.ts` and the response schemas exported by `/contracts/api.ts`; throws a typed `ApiClientError { status, code: ApiErrorCode, details? }` on non-2xx so the calling hooks can switch on `code` (e.g. render a "regenerate" UI on `ai_invalid_response`).
+- `/stores/useByokKey.ts` — in-memory plaintext BYOK cache. Settings's Save/Unlock populate it; `readByokKeyOrThrow()` is the helper the AI hooks call before forwarding `x-anthropic-key`. Plaintext never enters localStorage and clears on tab close.
+- `/components/Rule.tsx` — hairline / heavy horizontal rule primitive. Tones: stone / amber / arctic.
+- `/components/Ornament.tsx` — `◆ ▸ → ↗ █ ▌ ─ ━` typesetting marks with a typed `kind` prop. `aria-hidden` by default; `label` prop when the ornament IS the affordance.
+- `/components/RouteHeader.tsx` — shared brutalist route header: section number `[ §0N / NAME ]`, `display-xl` title, Space Mono subhead with `↗` arrow, heavy bottom rule. Adopted by all seven routes.
+
+### Changed — visual identity (workstream A, the big slice)
+- **Type system reset to two non-serif families.** Italiana + Fraunces are gone. Space Grotesk variable (display, body, large numerics, wordmark) + Space Mono (captions, labels, bracketed metadata). Tailwind `font-sans` → Space Grotesk; `font-mono` → Space Mono. The wordmark moves to Space Grotesk 700 uppercase tracking-tight.
+- **Palette extended with arctic blue.** `colors.arctic.{200,400,500,700}` ramped from the locked `#4FA3FF`. Used as focus colour on inputs, info-tone pills, sidebar / discovery accent bars, modal close hover, dossier link colour.
+- **Globals reset.** Dropped the warm radial gradient + paper-grain noise overlay + `.caption-label` / `.focus-underline` Day-4 utilities. New utilities: `.label-mono` (Space Mono uppercase 10px tracking 0.08em), `.display-xl` (Space Grotesk 700 uppercase clamped 2.5rem-4rem, tracking -0.03em), `.tab-nums` (tabular + lining + slashed-zero), `.focus-arctic` (3px arctic underline that animates in on focus-within).
+- **Tailwind reset.** Removed the `shadow-editorial` token, the layered-translucent gradient utilities, the editorial radius bumps. New tokens: `borderWidth.DEFAULT = 2px`, `borderRadius.DEFAULT = 2px`, `keyframes slide-up / slide-in-right / caret-blink`.
+- **Component rebuilds.** `Card` (flat opaque + 2px border + optional 3px accent / 3px amber top rule), `Button` (block uppercase + 2px border + active-press, primary solid amber, arrow ornament prop), `Input` (3px bottom border + arctic focus, boxed variant for the BYOK password field), `Textarea` (heavy framed), `Field` (bracketed mono label + amber required dot), `Modal` (flat surface + 3px amber top border + slide-up 120ms, no rotation), `Pill` (bracketed mono in bordered block), `Sidebar` (3px amber left bar active + hairline section rules + uppercase Space Mono nav rows), `Stat` (huge tabular Space Grotesk numerals + bracketed mono caption), `Toaster` (3px top tone bar + Space Mono body + slide-in from right), `Markdown` (uppercase H1, mono H2 with `▸`, bracketed mono H3, `▸` bullet ornament, arctic link colour), `SectionLabel` (bracketed mono + ornament prefix), `PassphraseStrength` (carried forward; brutalist label tone via the new utilities).
+- **Per-route headers.** Every route now opens with the `RouteHeader` primitive. Section labels are `[ §01 / DASHBOARD ]` through `[ §07 / SETTINGS ]`. Subheads carry a `↗` arctic-blue arrow ornament.
+- **Per-route empty states.** Replaced with brutalist copy in bracketed mono (e.g. `[ NOTHING IN FLIGHT // THE TWO-HOUR RULE STARTS HERE ]`, `[ ADD A COMPANY TO WIDEN THE FEED ]`).
+- **Dashboard.** Recent-app rows keep stage-coloured 3px left bars; alignment scores render as 2xl tabular Space Grotesk in the row right edge. Today's-followups card flips to `tone='urgent'` with a 3px rose accent. New high-fit-discoveries rail uses `accent='arctic'` to call out the arctic blue secondary.
+- **Tracker / Discovery / Documents / Interviews.** Filter rails moved to an underlined tab strip on a 2px stone-800 baseline (active = -2px amber underline, no chip box). Discovery posting cards picked up a 4xl tabular alignment numeral + bracketed "[ FIT ]" caption + `↗` ornament on "open posting" links. Discovery's status-badge cards keep their alignment-band left accent.
+- **Settings.** Card splits into key + passphrase + storage subsections separated by hairline rules. Encrypted / Fallback + Locked / Unlocked pills now drive the user's mental model alongside the action affordances. The new Unlock subform handles return sessions (passphrase for AES, no passphrase for fallback). Save and Unlock populate the BYOK in-memory cache so AI generation works in the same session.
+
+### Changed — workstream B (mock-api → real api-client)
+- Every `/lib/queries/*` hook now imports from `@/lib/api-client` instead of `@/lib/mock-api`. Hook signatures are unchanged so callers do not move.
+- AI hooks (`useAlignment`, `useRecomputeAlignment`, `useGenerateResume`, `useGenerateCoverLetter`, `useGenerateNinetyDay`, `useGenerateDossier`, `useMockInterviewTurn`, `useIngestSkills`) pull the unlocked plaintext from `useByokKey` via `readByokKeyOrThrow()` and forward it on `x-anthropic-key`. Locked-state errors map to the same `missing_anthropic_key` code the server emits so the error UI is uniform.
+- `/lib/mock-api.ts` stays in the repo per kickoff (Day 6 deletion target) but has zero remaining importers — `rg "from '@/lib/mock-api'"` returns nothing outside the file header.
+
+### Contract notes
+- None. No proposals filed. `/contracts/*.ts` untouched.
+
+### Carried over
+- Storybook stories render against the in-memory state path (no fetch); the api-client hook layer is exercised end-to-end by the real app only. A MockServiceWorker overlay for stories that exercise the network is Day 6.
+- Authenticated-route Lighthouse + axe-core still gated on `CI_LIVE_CLERK=1`.
+- The Tracker create-modal status select and Discovery add-company ATS-provider select keep native `<select>` chrome (now framed by 2px border, arctic focus). A bespoke brutalist dropdown is deferred.
+- BYOK Unlock UX assumes the user remembers their passphrase; "forgot passphrase" is currently the existing remove-and-resave path. A passphrase-hint feature is out of scope for Day 5.
+
 ## [agent/frontend/d4] — 2026-05-16
 
 ### Added

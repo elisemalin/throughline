@@ -13,9 +13,11 @@ import {
   JOB_LIMIT,
   JobModal,
   Modal,
+  Ornament,
   Pill,
   PROJECT_LIMIT,
   ProjectModal,
+  RouteHeader,
   SectionLabel,
   Textarea,
 } from '@/components';
@@ -155,35 +157,33 @@ export function SkillsClient() {
 
   return (
     <div className="space-y-10">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div className="space-y-3">
-          <div className="caption-label text-stone-500">Source of truth</div>
-          <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
-            Skills Database
-          </h1>
-          <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
-            Every resume, cover letter, and interview pulls from here.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setImportOpen(true)}
-            data-testid="skills-import"
-          >
-            <Upload size={13} aria-hidden /> Import
-          </Button>
-          <Button
-            size="sm"
-            onClick={openCreateJob}
-            disabled={atJobLimit}
-            data-testid="skills-add-job"
-          >
-            <Plus size={14} aria-hidden /> Add role
-          </Button>
-        </div>
-      </header>
+      <RouteHeader
+        section="§02"
+        name="SKILLS"
+        title="Skills Database"
+        sub="The source of truth. Every resume, cover letter, and interview pulls from here."
+        right={
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              data-testid="skills-import"
+            >
+              <Upload size={13} aria-hidden /> Import
+            </Button>
+            <Button
+              size="sm"
+              onClick={openCreateJob}
+              disabled={atJobLimit}
+              data-testid="skills-add-job"
+              arrow
+            >
+              <Plus size={14} aria-hidden /> Add role
+            </Button>
+          </div>
+        }
+      />
 
       {isLoading && (
         <Card className="p-5 text-stone-500 text-sm">Loading Skills DB...</Card>
@@ -241,15 +241,16 @@ export function SkillsClient() {
               Roles &amp; projects
             </SectionLabel>
             {skillsDB.jobs.length === 0 ? (
-              <Card className="px-8 py-14 text-center space-y-4">
-                <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto leading-snug">
+              <Card className="px-8 py-14 text-center space-y-5">
+                <Ornament kind="diamond" className="text-amber-200/70 text-2xl block" />
+                <p className="display-xl text-2xl md:text-3xl text-stone-50 max-w-md mx-auto">
                   Where does the throughline start?
                 </p>
-                <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
-                  Import a resume, or add a role manually.
+                <p className="font-mono text-xs text-stone-500 max-w-sm mx-auto">
+                  [ IMPORT A RESUME, OR ADD A ROLE MANUALLY ]
                 </p>
                 <div className="pt-2">
-                  <Button size="sm" onClick={openCreateJob}>
+                  <Button size="sm" onClick={openCreateJob} arrow>
                     <Plus size={14} aria-hidden /> Add a role
                   </Button>
                 </div>
