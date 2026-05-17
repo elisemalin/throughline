@@ -101,13 +101,13 @@ export function Markdown({ children }: MarkdownProps) {
         }
         if (block.kind === 'h2') {
           return (
-            <h2
-              key={idx}
-              className="text-sm text-stone-100 font-mono uppercase tracking-[0.12em] mt-6 pt-3 border-t-2 border-stone-800 flex items-baseline gap-2"
-            >
-              <span aria-hidden className="text-amber-200/80">▸</span>
-              {tokenizeInline(block.text, `h2-${idx}`)}
-            </h2>
+            <div key={idx} className="mt-6 space-y-3">
+              <hr aria-hidden className="border-0 h-[2px] bg-stone-800" />
+              <h2 className="text-sm text-stone-100 font-mono uppercase tracking-[0.12em] flex items-baseline gap-2">
+                <span aria-hidden className="text-amber-200/80">▸</span>
+                {tokenizeInline(block.text, `h2-${idx}`)}
+              </h2>
+            </div>
           );
         }
         if (block.kind === 'h3') {
