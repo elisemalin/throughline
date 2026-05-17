@@ -13,7 +13,9 @@ import {
   Field,
   Input,
   Modal,
+  Ornament,
   Pill,
+  RouteHeader,
 } from '@/components';
 import type { AtsProvider, DiscoveryStatus } from '@/contracts/models';
 import { ATS_PROVIDERS } from '@/contracts/models';
@@ -154,33 +156,30 @@ export function DiscoveryClient() {
 
   return (
     <div className="space-y-10">
-      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div className="space-y-3">
-          <div className="caption-label text-stone-500">Polled overnight</div>
-          <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
-            Discovery
-          </h1>
-          <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
-            Fresh postings from your watchlist, scored against your Skills DB.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handlePoll}
-            disabled={poll.isPending}
-            data-testid="discovery-poll"
-          >
-            <RefreshCw size={13} aria-hidden /> {poll.isPending ? 'Polling...' : 'Poll now'}
-          </Button>
-          <Button size="sm" onClick={() => setOpenAdd(true)} data-testid="discovery-add-company">
-            <Plus size={14} aria-hidden /> Add company
-          </Button>
-        </div>
-      </header>
+      <RouteHeader
+        section="§03"
+        name="DISCOVERY"
+        title="Discovery"
+        sub="Fresh postings from your watchlist, scored against your Skills DB."
+        right={
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handlePoll}
+              disabled={poll.isPending}
+              data-testid="discovery-poll"
+            >
+              <RefreshCw size={13} aria-hidden /> {poll.isPending ? 'Polling' : 'Poll now'}
+            </Button>
+            <Button size="sm" onClick={() => setOpenAdd(true)} data-testid="discovery-add-company" arrow>
+              <Plus size={14} aria-hidden /> Add company
+            </Button>
+          </div>
+        }
+      />
 
-      <div className="flex gap-1 border-b border-stone-100/5 pb-1" role="tablist" aria-label="Discovery view">
+      <div className="flex gap-1 border-b-2 border-stone-800" role="tablist" aria-label="Discovery view">
         {(['queue', 'watchlist'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -188,21 +187,18 @@ export function DiscoveryClient() {
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`relative caption-label px-4 py-2 transition-colors ${
-              tab === t ? 'text-amber-200' : 'text-stone-600 hover:text-stone-300'
+            className={`relative font-mono text-xs uppercase tracking-[0.1em] px-4 py-2.5 transition-colors -mb-[2px] border-b-2 ${
+              tab === t ? 'text-amber-200 border-amber-200' : 'text-stone-600 border-transparent hover:text-stone-300'
             }`}
           >
             {t === 'queue' ? 'Queue' : 'Watchlist'}
-            {tab === t && (
-              <span aria-hidden className="absolute left-4 right-4 -bottom-1 h-[2px] bg-amber-200 rounded-full" />
-            )}
           </button>
         ))}
       </div>
 
       {tab === 'queue' ? (
         <>
-          <div className="flex flex-wrap gap-3" role="tablist" aria-label="Status filter">
+          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Status filter">
             {STATUS_FILTERS.map((f) => (
               <button
                 key={f.id}
@@ -210,10 +206,10 @@ export function DiscoveryClient() {
                 role="tab"
                 aria-selected={filter === f.id}
                 onClick={() => setFilter(f.id)}
-                className={`caption-label px-3 py-1.5 rounded-full ring-1 transition-all ${
+                className={`font-mono text-[11px] uppercase tracking-[0.1em] px-3 py-1.5 border-2 transition-all ${
                   filter === f.id
-                    ? 'text-amber-200 bg-amber-950/30 ring-amber-900/50'
-                    : 'text-stone-600 ring-stone-800/50 hover:text-stone-300 hover:ring-stone-700'
+                    ? 'text-amber-200 border-amber-200'
+                    : 'text-stone-500 border-stone-800 hover:text-stone-200 hover:border-stone-600'
                 }`}
               >
                 {f.label}
@@ -222,13 +218,13 @@ export function DiscoveryClient() {
           </div>
 
           {filteredPostings.length === 0 ? (
-            <Card className="px-8 py-14 text-center space-y-4">
-              <Compass size={28} className="text-amber-200/40 mx-auto" aria-hidden />
-              <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+            <Card className="px-8 py-14 text-center space-y-5">
+              <Compass size={28} className="text-amber-200/70 mx-auto" aria-hidden />
+              <p className="display-xl text-2xl md:text-3xl text-stone-50 max-w-md mx-auto">
                 {postings.length === 0 ? 'No postings yet.' : 'Caught up.'}
               </p>
-              <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
-                Add a company to widen the feed.
+              <p className="font-mono text-xs text-stone-500 max-w-sm mx-auto">
+                [ ADD A COMPANY TO WIDEN THE FEED ]
               </p>
             </Card>
           ) : (
@@ -271,22 +267,25 @@ export function DiscoveryClient() {
                         </div>
                         {typeof p.alignmentScore === 'number' && (
                           <div className="text-right">
-                            <div className="tab-nums text-3xl text-amber-200 font-display">
+                            <div className="tab-nums font-sans font-bold text-4xl text-amber-200 leading-none">
                               {p.alignmentScore}
                             </div>
-                            <div className="caption-label text-amber-200/60 mt-0.5">Fit</div>
+                            <div className="label-mono text-amber-200/70 mt-2">
+                              <span aria-hidden className="text-stone-700">[</span> fit{' '}
+                              <span aria-hidden className="text-stone-700">]</span>
+                            </div>
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-100/5">
+                      <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-800">
                         <Pill tone={p.status === 'new' ? 'accent' : 'muted'}>{p.status}</Pill>
                         <a
                           href={p.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="caption-label text-stone-400 hover:text-amber-200 inline-flex items-center gap-1.5 transition-colors"
+                          className="label-mono text-arctic-200 hover:text-arctic-400 inline-flex items-center gap-1.5 transition-colors"
                         >
-                          Open posting <ExternalLink size={11} aria-hidden />
+                          Open posting <ExternalLink size={11} aria-hidden /> <Ornament kind="northEast" />
                         </a>
                         <div className="flex-1" />
                         <Button
@@ -362,7 +361,7 @@ export function DiscoveryClient() {
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value as AtsProvider)}
-              className="w-full bg-stone-900/80 border border-stone-800 rounded-sm px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-amber-200/60"
+              className="w-full bg-stone-950 border-2 border-stone-700 rounded-none px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-arctic-400"
             >
               {ATS_PROVIDERS.map((p) => (
                 <option key={p} value={p}>

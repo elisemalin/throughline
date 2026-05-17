@@ -1,8 +1,6 @@
-// Field — label + control + optional hint. Day 4: labels move from the
-// mono-uppercase-stamp pattern (text-[10px] tracking-[0.2em] font-mono)
-// to Fraunces uppercase with the `.caption-label` token in globals.css.
-// Hints render in Fraunces italic so they read as marginalia, not
-// secondary-color body text.
+// Brutalist field — bracketed Space Mono caption above the control.
+// `[ LABEL ]` is part of the visual label rather than the copy so the
+// caller passes the readable string only.
 
 import {
   cloneElement,
@@ -34,22 +32,17 @@ export function Field({ label, children, hint, required = false }: FieldProps) {
     : children;
   return (
     <div className="block space-y-2">
-      <label
-        htmlFor={controlId}
-        className="caption-label flex items-center gap-1.5 text-stone-400"
-      >
+      <label htmlFor={controlId} className="label-mono flex items-center gap-1.5">
+        <span aria-hidden className="text-stone-600">[</span>
         <span>{label}</span>
-        {required && (
-          <span aria-hidden className="text-amber-200/80">
-            &bull;
-          </span>
-        )}
+        {required && <span aria-hidden className="text-amber-200">*</span>}
+        <span aria-hidden className="text-stone-600">]</span>
       </label>
       {enhancedChild}
       {hint && (
         <div
           id={hintId}
-          className="text-xs italic text-stone-500 leading-snug"
+          className="font-mono text-[11px] text-stone-500 leading-snug tracking-[0.01em]"
         >
           {hint}
         </div>

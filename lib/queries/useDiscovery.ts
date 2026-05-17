@@ -8,7 +8,7 @@ import {
   patchDiscoveryStatus,
   postDiscoveryPoll,
   postWatchlistAdd,
-} from '@/lib/mock-api';
+} from '@/lib/api-client';
 import type {
   DiscoveryUpdateRequest,
   WatchlistAddRequest,

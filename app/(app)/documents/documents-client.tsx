@@ -6,7 +6,17 @@
 
 import { useState } from 'react';
 import { FileText, Trash2 } from 'lucide-react';
-import { Button, Card, Field, Markdown, Modal, Pill, SectionLabel } from '@/components';
+import {
+  Button,
+  Card,
+  Field,
+  Markdown,
+  Modal,
+  Ornament,
+  Pill,
+  RouteHeader,
+  SectionLabel,
+} from '@/components';
 import type { DocumentKind } from '@/contracts/models';
 import { DOCUMENT_KINDS } from '@/contracts/models';
 import { useApplications } from '@/lib/queries/useApplications';
@@ -78,15 +88,12 @@ export function DocumentsClient() {
 
   return (
     <div className="space-y-10">
-      <header className="space-y-3">
-        <div className="caption-label text-stone-500">Generated artifacts</div>
-        <h1 className="text-5xl md:text-6xl text-stone-50 font-display tracking-tight leading-[1.05]">
-          Documents
-        </h1>
-        <p className="text-stone-400 italic max-w-xl text-sm md:text-base leading-relaxed">
-          Resumes, cover letters, 90-day plans, and dossiers — pulled from your Skills DB.
-        </p>
-      </header>
+      <RouteHeader
+        section="§05"
+        name="DOCUMENTS"
+        title="Documents"
+        sub="Resumes, cover letters, 90-day plans, and dossiers — pulled from your Skills DB."
+      />
 
       <Card className="p-5">
         <SectionLabel>Generate</SectionLabel>
@@ -95,7 +102,7 @@ export function DocumentsClient() {
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value as DocumentKind)}
-              className="w-full bg-stone-900/80 border border-stone-800 rounded-sm px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-amber-200/60"
+              className="w-full bg-stone-950 border-2 border-stone-700 rounded-none px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-arctic-400"
             >
               {DOCUMENT_KINDS.map((k) => (
                 <option key={k} value={k}>
@@ -111,7 +118,7 @@ export function DocumentsClient() {
             <select
               value={applicationId}
               onChange={(e) => setApplicationId(e.target.value)}
-              className="w-full bg-stone-900/80 border border-stone-800 rounded-sm px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-amber-200/60"
+              className="w-full bg-stone-950 border-2 border-stone-700 rounded-none px-3 py-2 text-stone-100 text-sm focus:outline-none focus:border-arctic-400"
             >
               <option value="">— None —</option>
               {applications.map((a) => (
@@ -142,10 +149,10 @@ export function DocumentsClient() {
             role="tab"
             aria-selected={filter === k}
             onClick={() => setFilter(k)}
-            className={`text-[10px] uppercase tracking-[0.2em] font-mono px-2.5 py-1.5 rounded-sm border ${
+            className={`font-mono text-[11px] uppercase tracking-[0.1em] px-3 py-1.5 border-2 transition-all ${
               filter === k
-                ? 'border-amber-200/60 text-amber-200 bg-amber-900/20'
-                : 'border-stone-800 text-stone-500 hover:text-stone-200'
+                ? 'border-amber-200 text-amber-200'
+                : 'border-stone-800 text-stone-500 hover:border-stone-600 hover:text-stone-200'
             }`}
           >
             {k === 'all' ? 'All' : KIND_LABELS[k]}
@@ -158,13 +165,13 @@ export function DocumentsClient() {
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <Card className="px-8 py-14 text-center space-y-4">
-          <FileText size={28} className="text-amber-200/40 mx-auto" aria-hidden />
-          <p className="text-2xl text-stone-200 font-display tracking-tight max-w-md mx-auto">
+        <Card className="px-8 py-14 text-center space-y-5">
+          <Ornament kind="diamond" className="text-amber-200/70 text-2xl block" />
+          <p className="display-xl text-2xl md:text-3xl text-stone-50 max-w-md mx-auto">
             Generate a resume above.
           </p>
-          <p className="text-sm text-stone-500 italic max-w-sm mx-auto">
-            The Skills DB does the lifting.
+          <p className="font-mono text-xs text-stone-500 max-w-sm mx-auto">
+            [ THE SKILLS DB DOES THE LIFTING ]
           </p>
         </Card>
       )}

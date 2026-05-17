@@ -1,4 +1,87 @@
-# Design audit — Day 4
+# Design audit — Day 5 (current) + Day 4 (historical)
+
+## Day 5 reversal
+
+The Day 4 Italiana + Fraunces direction was **rejected**. The user's
+verbatim correction:
+
+> "It still reads generic as fuck to me, we def need to make this more
+> unique. I think the main thing is that I hate serif fonts on websites,
+> it looks like placeholder shit no matter the site imo."
+
+Hard rule going forward: **NO serif fonts on websites.** Italiana,
+Fraunces, DM Sans, Inter, Geist, JetBrains Mono — all out. The Day 5
+type system collapses to two non-serif families:
+
+- **Space Grotesk** (variable) drives display, body, large numerics,
+  and the wordmark. Tailwind `font-sans` maps here.
+- **Space Mono** drives captions, labels, bracketed metadata, code-like
+  signals. Tailwind `font-mono` maps here.
+
+The Day 5 direction is **brutalist + arctic blue**:
+
+- Palette: stone-950 base + amber-200 primary + arctic blue `#4FA3FF`
+  secondary (`colors.arctic.{200,400,500,700}`) for signals / focused
+  states / info / hover-on-interactive. Emerald stays for healthy /
+  progress.
+- Heavy 2-3px borders on cards / buttons / inputs. Default
+  `rounded-none`; `rounded-sm` caps at 2px.
+- Flat opaque block cards. NO translucent gradients, NO backdrop blur,
+  NO editorial shadow.
+- All-caps display headings via the `.display-xl` utility (Space
+  Grotesk 700, uppercase, tracking -0.03em, clamped 2.5rem-4rem).
+- Mono captions inside `[ BRACKETS ]` via the `.label-mono` utility
+  (Space Mono 10px, uppercase, tracking 0.08em). Brackets are part of
+  the rendering, not the copy.
+- Ornament marks `◆ ▸ → ↗ █` as decoration / list bullets / transition
+  glyphs. Shipped via the new `Ornament.tsx` primitive.
+- Stats render LARGE — primary tiles at `text-6xl md:text-7xl`,
+  tabular numerics, slashed zero via `font-feature-settings "zero"`.
+- Sidebar active item is a 3px amber left bar + uppercase Space Mono
+  label. No background fill.
+- Per-route headers use the new `RouteHeader` primitive: section
+  number `[ §0N / NAME ]` + uppercase display title + Space Mono
+  subhead with `↗` arrow ornament + heavy bottom rule.
+
+### What was reverted from Day 4
+
+| Day 4 pattern | Day 5 replacement |
+|---|---|
+| Italiana wordmark | Space Grotesk 700 uppercase tracking-tight |
+| Fraunces display / body / mono | Space Grotesk (display + body) + Space Mono (captions) |
+| `.caption-label` (Fraunces uppercase weight 500) | `.label-mono` (Space Mono uppercase + brackets) |
+| Layered translucent cards (`bg-gradient + ring + shadow-editorial + backdrop-blur`) | Flat opaque cards with `border-2 border-stone-700`, optional 3px accent bar |
+| Underline-animated amber focus (`.focus-underline`) | Arctic-blue 3px focus underline (`.focus-arctic`) — and on the secondary button family the focus ring is arctic + 2px offset |
+| Soft-tint pills (`bg-X/30 + ring-1`) | Border-only pills with bracket glyphs inside |
+| Hover-lift + amber gradient on primary buttons | Flat amber primary block + active translate-down |
+| Toast slide-in with rotation | Toast slide-in from the right, no rotation, 3px top tone bar |
+| Modal 1px gradient amber accent | Modal 3px solid amber top border |
+| Paper-grain noise overlay + warm radial gradients | Flat stone-950 background |
+| Editorial italic body copy | Mono body copy with bracket conventions |
+
+### Day 5 mock-api → real api-client swap
+
+Workstream B carried in alongside the visual reset:
+
+- `/lib/api-client.ts` — one typed function per `API_ROUTES` entry.
+  Each call validates the response through a Zod schema composed from
+  `/contracts/models.ts` (or pulled directly from `/contracts/api.ts`
+  where the response schema is already exported). 4xx/5xx responses
+  flow through `ApiErrorBodySchema` and throw a typed `ApiClientError`
+  with the server's `code` for switch-statement narrowing.
+- BYOK forwarding: AI routes take an explicit `apiKey` argument. The
+  TanStack Query hook layer pulls the plaintext from the new
+  `useByokKey` in-memory store via `readByokKeyOrThrow()`. Settings's
+  Save and Unlock flows populate the store. The plaintext never enters
+  localStorage and never persists across tab close.
+- Every `/lib/queries/*` hook now imports from `@/lib/api-client`.
+  `/lib/mock-api.ts` stays in the repo (Day 6 deletion target) but
+  has zero remaining importers — `rg "from '@/lib/mock-api'" --type ts`
+  returns zero hits outside the file's own header comment.
+
+---
+
+# Design audit — Day 4 (historical)
 
 The Day 3 refresh (Italiana wordmark + Fraunces display + paper grain) was
 typography-only. Layout, spacing, colour, micro-interactions, and form

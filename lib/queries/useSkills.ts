@@ -1,7 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getSkills, postSkillsIngest, putSkills } from '@/lib/mock-api';
+import { getSkills, postSkillsIngest, putSkills } from '@/lib/api-client';
+import { readByokKeyOrThrow } from '@/stores/useByokKey';
 import type { SkillsIngestRequest, SkillsUpdate } from '@/contracts/api';
 import { QK } from './keys';
 
@@ -15,7 +16,10 @@ export function useSkills() {
 export function useIngestSkills() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (req: SkillsIngestRequest) => postSkillsIngest(req),
+    mutationFn: (req: SkillsIngestRequest) => {
+      const apiKey = readByokKeyOrThrow();
+      return postSkillsIngest(req, apiKey);
+    },
     onSuccess: () => client.invalidateQueries({ queryKey: QK.skills }),
   });
 }

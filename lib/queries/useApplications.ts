@@ -8,7 +8,8 @@ import {
   patchApplication,
   postApplication,
   postApplicationAlignment,
-} from '@/lib/mock-api';
+} from '@/lib/api-client';
+import { readByokKeyOrThrow } from '@/stores/useByokKey';
 import type {
   ApplicationCreate,
   ApplicationUpdate,
@@ -61,7 +62,10 @@ export function useDeleteApplication() {
 export function useRecomputeAlignment() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => postApplicationAlignment(id),
+    mutationFn: (id: string) => {
+      const apiKey = readByokKeyOrThrow();
+      return postApplicationAlignment(id, apiKey);
+    },
     onSuccess: (_data, id) => {
       client.invalidateQueries({ queryKey: QK.applications });
       client.invalidateQueries({ queryKey: QK.applicationEvents(id) });
