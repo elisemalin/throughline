@@ -100,7 +100,7 @@ export function InterviewsClient() {
         sub="Practice with the mock interviewer or rehearse the STAR stories your Skills DB generates."
       />
 
-      <div className="flex gap-1 border-b-2 border-stone-800" role="tablist" aria-label="Interview tab">
+      <div className="flex gap-2" role="tablist" aria-label="Interview tab">
         {(['mock', 'stories'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -108,8 +108,10 @@ export function InterviewsClient() {
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`relative font-mono text-xs uppercase tracking-[0.1em] px-4 py-2.5 transition-colors -mb-[2px] border-b-2 ${
-              tab === t ? 'text-amber-200 border-amber-200' : 'text-stone-600 border-transparent hover:text-stone-300'
+            className={`font-mono text-xs uppercase tracking-[0.1em] px-4 py-2 border-2 transition-all ${
+              tab === t
+                ? 'border-amber-200 bg-amber-200 text-stone-950'
+                : 'border-stone-800 text-stone-500 hover:border-stone-600 hover:text-stone-200'
             }`}
           >
             {t === 'mock' ? 'Mock interview' : 'Stories'}

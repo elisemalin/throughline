@@ -179,7 +179,7 @@ export function DiscoveryClient() {
         }
       />
 
-      <div className="flex gap-1 border-b-2 border-stone-800" role="tablist" aria-label="Discovery view">
+      <div className="flex gap-2" role="tablist" aria-label="Discovery view">
         {(['queue', 'watchlist'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -187,8 +187,10 @@ export function DiscoveryClient() {
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className={`relative font-mono text-xs uppercase tracking-[0.1em] px-4 py-2.5 transition-colors -mb-[2px] border-b-2 ${
-              tab === t ? 'text-amber-200 border-amber-200' : 'text-stone-600 border-transparent hover:text-stone-300'
+            className={`font-mono text-xs uppercase tracking-[0.1em] px-4 py-2 border-2 transition-all ${
+              tab === t
+                ? 'border-amber-200 bg-amber-200 text-stone-950'
+                : 'border-stone-800 text-stone-500 hover:border-stone-600 hover:text-stone-200'
             }`}
           >
             {t === 'queue' ? 'Queue' : 'Watchlist'}
@@ -235,17 +237,17 @@ export function DiscoveryClient() {
                   filter === 'new' &&
                   typeof p.alignmentScore === 'number' &&
                   p.alignmentScore >= 85;
-                const accent: 'emerald' | 'amber' | 'none' =
+                const tone: 'success' | 'accent' | 'default' =
                   (p.alignmentScore ?? 0) >= 85
-                    ? 'emerald'
+                    ? 'success'
                     : (p.alignmentScore ?? 0) >= 70
-                      ? 'amber'
-                      : 'none';
+                      ? 'accent'
+                      : 'default';
                 return (
                   <li key={p.id}>
                     <Card
-                      accent={accent}
-                      className={isFeatured ? 'pl-7 pr-6 py-6' : 'pl-6 pr-5 py-5'}
+                      tone={tone}
+                      className={isFeatured ? 'px-7 py-6' : 'px-5 py-5'}
                     >
                       <div className="flex items-start gap-4">
                         <div className="flex-1 min-w-0">
@@ -277,7 +279,8 @@ export function DiscoveryClient() {
                           </div>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-800">
+                      <hr aria-hidden className="border-0 h-px bg-stone-800 mt-4" />
+                      <div className="flex flex-wrap items-center gap-3 mt-4">
                         <Pill tone={p.status === 'new' ? 'accent' : 'muted'}>{p.status}</Pill>
                         <a
                           href={p.url}

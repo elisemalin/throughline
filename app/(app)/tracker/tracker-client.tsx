@@ -104,11 +104,7 @@ export function TrackerClient() {
         }
       />
 
-      <div
-        className="flex flex-wrap gap-1 border-b-2 border-stone-800"
-        role="tablist"
-        aria-label="Status filter"
-      >
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Status filter">
         {(['all', 'active', ...STATUSES] as StatusFilter[]).map((f) => (
           <button
             key={f}
@@ -116,10 +112,10 @@ export function TrackerClient() {
             role="tab"
             aria-selected={filter === f}
             onClick={() => setFilter(f)}
-            className={`relative font-mono text-xs uppercase tracking-[0.1em] px-3 py-2.5 transition-colors -mb-[2px] border-b-2 ${
+            className={`font-mono text-xs uppercase tracking-[0.1em] px-3 py-1.5 border-2 transition-all ${
               filter === f
-                ? 'text-amber-200 border-amber-200'
-                : 'text-stone-600 border-transparent hover:text-stone-300'
+                ? 'border-amber-200 bg-amber-200 text-stone-950'
+                : 'border-stone-800 text-stone-500 hover:border-stone-600 hover:text-stone-200'
             }`}
           >
             {f === 'all' ? 'All' : f === 'active' ? 'Active' : statusLabel(f)}
@@ -164,16 +160,14 @@ export function TrackerClient() {
                 className="w-full text-left group"
               >
                 <Card
-                  accent={
-                    a.status === 'interview'
-                      ? 'emerald'
-                      : a.status === 'offer'
-                        ? 'emerald'
-                        : a.status === 'applied' || a.status === 'screen'
-                          ? 'amber'
-                          : 'none'
+                  tone={
+                    a.status === 'interview' || a.status === 'offer'
+                      ? 'success'
+                      : a.status === 'applied' || a.status === 'screen'
+                        ? 'accent'
+                        : 'default'
                   }
-                  className="pl-6 pr-5 py-4 flex items-center gap-4 hover:ring-amber-200/30 transition-all group-hover:-translate-y-px"
+                  className="px-5 py-4 flex items-center gap-4 transition-colors group-hover:bg-stone-900/60"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-stone-100 truncate">{a.role}</div>

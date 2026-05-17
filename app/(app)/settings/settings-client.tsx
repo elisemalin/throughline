@@ -121,7 +121,7 @@ export function SettingsClient() {
         sub="Anthropic key, stored encrypted in your browser. Never leaves the device unencrypted."
       />
 
-      <Card accent={meta ? (unlocked ? 'emerald' : 'amber') : 'arctic'} className="px-7 py-6">
+      <Card tone={meta ? (unlocked ? 'success' : 'accent') : 'arctic'} className="px-7 py-6">
         <SectionLabel
           ornament="◆"
           right={

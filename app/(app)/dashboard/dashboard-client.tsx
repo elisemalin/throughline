@@ -10,18 +10,7 @@ import { Card, Ornament, Pill, RouteHeader, Rule, SectionLabel, Stat } from '@/c
 import { useApplications } from '@/lib/queries/useApplications';
 import { useDiscovery } from '@/lib/queries/useDiscovery';
 import { useSkills } from '@/lib/queries/useSkills';
-import type { ApplicationStatus } from '@/contracts/models';
 import { STATUS_TONES, statusLabel } from '../_lib/status';
-
-const STATUS_BAR_COLOR: Record<ApplicationStatus, string> = {
-  researching: 'bg-stone-600',
-  applied: 'bg-amber-200',
-  screen: 'bg-amber-200',
-  interview: 'bg-emerald-300',
-  offer: 'bg-emerald-200',
-  rejected: 'bg-stone-700',
-  withdrawn: 'bg-stone-700',
-};
 
 export function DashboardClient() {
   const { data: applicationsData } = useApplications();
@@ -84,7 +73,7 @@ export function DashboardClient() {
       />
 
       {!setupComplete && (
-        <Card accent="amber" tone="urgent" className="pl-7 pr-6 py-6">
+        <Card tone="accent" className="px-7 py-6">
           <div className="flex items-start gap-4">
             <Sparkles size={18} className="text-amber-200 mt-1 shrink-0" aria-hidden />
             <div className="flex-1 space-y-3">
@@ -141,12 +130,8 @@ export function DashboardClient() {
                   {idx > 0 && <Rule />}
                   <Link
                     href="/tracker"
-                    className="relative flex items-center gap-4 py-4 pl-5 pr-2 hover:bg-stone-900/60 transition-colors focus-visible:outline-none focus-visible:bg-stone-900"
+                    className="flex items-center gap-4 py-4 px-2 hover:bg-stone-900/60 transition-colors focus-visible:outline-none focus-visible:bg-stone-900"
                   >
-                    <span
-                      aria-hidden
-                      className={`absolute left-0 top-3 bottom-3 w-[3px] ${STATUS_BAR_COLOR[a.status]}`}
-                    />
                     <span className="flex-1 min-w-0">
                       <span className="block text-stone-100 truncate">
                         {a.role || 'Untitled role'}
@@ -169,7 +154,6 @@ export function DashboardClient() {
         </Card>
 
         <Card
-          accent={followUps.length > 0 ? 'rose' : 'none'}
           tone={followUps.length > 0 ? 'urgent' : 'default'}
           className="px-6 py-7"
         >
@@ -201,7 +185,7 @@ export function DashboardClient() {
         </Card>
       </section>
 
-      <Card accent="arctic" className="px-7 py-7">
+      <Card tone="arctic" className="px-7 py-7">
         <SectionLabel
           ornament="↗"
           right={
