@@ -1,16 +1,16 @@
 'use client';
 
-// Brutalist toast queue. Heavy 3px top border keyed to tone, flat
-// stone-950 body, Space Mono caption, slide-in from the right at 160ms
-// (no rotation — that read as twee in Day-4 review).
+// Brutalist toast queue. Day-5b: full tone-coloured border around the
+// toast block (no single-side top bar). Slide-in from the right at
+// 160ms. Mono body copy.
 
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { useToastStore, type ToastTone } from '@/stores/useToastStore';
 
 const TONE_BORDER: Record<ToastTone, string> = {
-  info: 'border-t-arctic-400',
-  success: 'border-t-emerald-300',
-  error: 'border-t-rose-300',
+  info: 'border-arctic-400',
+  success: 'border-emerald-300',
+  error: 'border-rose-300',
 };
 
 const TONE_ICON_CLASS: Record<ToastTone, string> = {
@@ -41,8 +41,7 @@ export function Toaster() {
           role="status"
           className={[
             'pointer-events-auto relative min-w-[260px] max-w-sm',
-            'bg-stone-950 border-2 border-stone-100 rounded-none',
-            'border-t-[3px]',
+            'bg-stone-950 border-2 rounded-none',
             TONE_BORDER[toast.tone],
             'animate-slide-in-right',
           ].join(' ')}

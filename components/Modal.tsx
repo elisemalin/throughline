@@ -1,8 +1,9 @@
 'use client';
 
-// Brutalist modal — flat opaque surface, 3px amber top border as the
-// system signal, slide-up entry at 120ms (no rotation). Keyboard trap,
-// ESC, and focus restoration carried forward.
+// Brutalist modal. Day-5b: full amber border (no top-only accent strip).
+// Flat opaque surface, slide-up entry at 120ms. Keyboard trap, ESC, and
+// focus restoration carried forward. Header divider uses an explicit
+// <hr> rather than a border-b so the rule reads as intentional.
 
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
@@ -79,14 +80,12 @@ export function Modal({ open, onClose, title, children, wide = false }: ModalPro
         ref={containerRef}
         className={[
           'relative w-full md:my-8 max-h-[92vh] overflow-y-auto',
-          'bg-stone-950 border-2 border-stone-100',
-          'border-t-[3px] border-t-amber-200',
-          'rounded-none',
+          'bg-stone-950 border-2 border-amber-200 rounded-none',
           'animate-slide-up',
           wide ? 'md:max-w-3xl' : 'md:max-w-xl',
         ].join(' ')}
       >
-        <div className="sticky top-0 z-10 bg-stone-950 px-6 py-4 flex items-center justify-between border-b-2 border-stone-700">
+        <div className="sticky top-0 z-10 bg-stone-950 px-6 py-4 flex items-center justify-between">
           <h2
             id="throughline-modal-title"
             className="text-xl md:text-2xl text-stone-50 font-sans font-bold uppercase tracking-[-0.02em]"
@@ -102,6 +101,7 @@ export function Modal({ open, onClose, title, children, wide = false }: ModalPro
             <X size={18} aria-hidden />
           </button>
         </div>
+        <hr aria-hidden className="border-0 h-px bg-stone-700" />
         <div className="p-6">{children}</div>
       </div>
     </div>

@@ -326,7 +326,8 @@ export function ApplicationDetail({ application, onClose }: Props) {
         )}
       </div>
 
-      <div className="flex justify-between pt-2 border-t border-stone-900">
+      <hr aria-hidden className="border-0 h-px bg-stone-900" />
+      <div className="flex justify-between pt-2">
         <Button variant="danger" size="sm" onClick={handleDelete} disabled={remove.isPending}>
           {remove.isPending ? 'Deleting...' : 'Delete'}
         </Button>

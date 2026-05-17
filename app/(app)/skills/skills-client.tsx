@@ -203,8 +203,9 @@ export function SkillsClient() {
                 {skillsDB.headline || <span className="text-stone-600">Add a headline</span>}
               </div>
               {skillsDB.positioning && (
-                <p className="text-stone-300 italic max-w-3xl text-sm border-l-2 border-amber-200/40 pl-3 mt-3">
-                  {skillsDB.positioning}
+                <p className="text-stone-300 max-w-3xl text-sm mt-3 flex items-baseline gap-2">
+                  <span aria-hidden className="text-amber-200/70 shrink-0">▸</span>
+                  <span>{skillsDB.positioning}</span>
                 </p>
               )}
               <div className="text-xs text-stone-500 font-mono pt-2 flex flex-wrap gap-x-4 gap-y-1">
@@ -214,8 +215,9 @@ export function SkillsClient() {
                 {skillsDB.contact.site && <span>{skillsDB.contact.site}</span>}
               </div>
               {skillsDB.targetRoles.length > 0 && (
-                <div className="pt-3 border-t border-stone-900 mt-3">
-                  <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono mb-2">
+                <div className="mt-4 space-y-2">
+                  <hr aria-hidden className="border-0 h-px bg-stone-900" />
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 font-mono mt-3 mb-2">
                     Target roles
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -302,7 +304,7 @@ export function SkillsClient() {
                           {job.projects.map((project) => (
                             <li
                               key={project.id}
-                              className="border-l border-stone-800 pl-4 group"
+                              className="pl-5 group relative before:content-['▸'] before:absolute before:left-0 before:text-stone-600"
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1 min-w-0">

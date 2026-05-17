@@ -1,7 +1,7 @@
 export { Button, BUTTON_SIZES, BUTTON_VARIANTS } from './Button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './Button';
 export { Card } from './Card';
-export type { CardProps, CardAccent, CardTone } from './Card';
+export type { CardProps, CardTone } from './Card';
 export { Field } from './Field';
 export type { FieldProps } from './Field';
 export { Input } from './Input';
